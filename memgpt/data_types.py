@@ -113,10 +113,12 @@ class Message(Record):
         # if role == "tool", then this must be specified
         # if role != "tool", this must be null
         if role == "tool":
-            assert tool_call_id is not None
+            assert tool_call_id is not None, "Role is tool, therefore a tool_call_id is required"
         else:
-            assert tool_call_id is None
+            assert tool_call_id is None, "Role is not tool, therefore a tool_call_id is not allowed"
         self.tool_call_id = tool_call_id
+        
+        assert self.text is not None, "Assistant messages must have text"
 
     # def __repr__(self):
     #    pass
