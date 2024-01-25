@@ -6,7 +6,7 @@ from typing import Optional, List, Dict, TypeVar
 import numpy as np
 
 from memgpt.constants import DEFAULT_HUMAN, DEFAULT_MEMGPT_MODEL, DEFAULT_PERSONA, DEFAULT_PRESET, LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
-from memgpt.utils import get_local_time, format_datetime, get_utc_time
+from memgpt.utils import get_local_time, format_datetime, get_utc_time, printd
 from memgpt.models import chat_completion_response
 
 
@@ -113,10 +113,16 @@ class Message(Record):
         # if role == "tool", then this must be specified
         # if role != "tool", this must be null
         if role == "tool":
-            assert tool_call_id is not None
+            assert tool_call_id is not None, "Role is tool, therefore a tool_call_id is required"
         else:
-            assert tool_call_id is None
+            assert tool_call_id is None, "Role is not tool, therefore a tool_call_id is not allowed"
         self.tool_call_id = tool_call_id
+
+        if self.text is None:
+            printd("Text is blank for message: inserting placeholder text")
+            self.text = "Placeholder text inserted."
+        
+        assert self.text is not None, "Assistant messages must have text"
 
     # def __repr__(self):
     #    pass
