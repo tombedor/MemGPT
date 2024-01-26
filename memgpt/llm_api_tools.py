@@ -1,3 +1,4 @@
+from copy import deepcopy
 import random
 import time
 import requests
@@ -183,6 +184,21 @@ def openai_chat_completions_request(url, api_key, data):
     if "tools" in data and data["tools"] is None:
         data.pop("tools")
         data.pop("tool_choice", None)  # extra safe,  should exist always (default="auto")
+        
+    msgs = deepcopy(data["messages"])
+        
+    # iterate through messages, check for non-matching tool calls
+    for i, msg in enumerate(msgs):
+        if msg.get("tool_call_id") is not None:
+            prev_msg = msgs[i-1]
+            tool_calls = prev_msg.get('tool_calls', [])
+            matching_tool_call = next((tc for tc in tool_calls if tc.get('id') == msg.get('tool_call_id')), None)
+            
+            if matching_tool_call is None:
+                printd(f"Found tool call {msg.get('tool_call_id')} in message {i} that is not in previous message {i-1}, popping message: {msg}. A better fix is to fix summarize_messages")
+                msgs.pop(i)
+
+    data['messages'] = msgs
 
     printd(f"Sending request to {url}")
     try:
