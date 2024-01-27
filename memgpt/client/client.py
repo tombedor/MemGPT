@@ -15,8 +15,6 @@ class Client(object):
         self,
         user_id: str = None,
         auto_save: bool = False,
-        quickstart: Union[QuickstartChoice, str, None] = None,
-        config: Union[Dict, MemGPTConfig] = None,  # not the same thing as AgentConfig
         debug: bool = False,
     ):
         """
@@ -28,6 +26,23 @@ class Client(object):
         """
         self.auto_save = auto_save
 
+        self.config = MemGPTConfig.load()
+
+        if user_id is None:
+            # the default user_id
+            self.user_id = uuid.UUID(self.config.anon_clientid)
+        elif isinstance(user_id, str):
+            self.user_id = uuid.UUID(user_id)
+        elif isinstance(user_id, uuid.UUID):
+            self.user_id = user_id
+        else:
+            raise TypeError(user_id)
+        self.interface = QueuingInterface(debug=debug)
+        self.server = SyncServer(default_interface=self.interface)
+
+    @staticmethod
+    def setup_config(cls):
+        config = MemGPTConfig.load()
         # make sure everything is set up properly
         # TODO: remove this eventually? for multi-user, we can't have a shared config directory
         MemGPTConfig.create_config_dir()
@@ -37,7 +52,6 @@ class Client(object):
             # Default to openai
             print("Detecting uninitialized MemGPT, defaulting to quickstart == openai")
             quickstart = "openai"
-
         if quickstart:
             # api key passed in config has priority over env var
             if isinstance(config, dict) and "openai_api_key" in config:
@@ -53,23 +67,9 @@ class Client(object):
 
             if isinstance(quickstart, str):
                 quickstart = str_to_quickstart_choice(quickstart)
-            quickstart_func(backend=quickstart, debug=debug)
-
+            quickstart_func(backend=quickstart, debug=True)
         if config is not None:
             set_config_with_dict(config)
-
-        if user_id is None:
-            # the default user_id
-            config = MemGPTConfig.load()
-            self.user_id = uuid.UUID(config.anon_clientid)
-        elif isinstance(user_id, str):
-            self.user_id = uuid.UUID(user_id)
-        elif isinstance(user_id, uuid.UUID):
-            self.user_id = user_id
-        else:
-            raise TypeError(user_id)
-        self.interface = QueuingInterface(debug=debug)
-        self.server = SyncServer(default_interface=self.interface)
 
     def list_agents(self):
         self.interface.clear()
