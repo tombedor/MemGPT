@@ -1,3 +1,5 @@
+import dotenv
+import yaml
 from memgpt.log import logger
 import inspect
 import json
@@ -38,6 +40,9 @@ def set_field(config, section, field, value):
 
 @dataclass
 class MemGPTConfig:
+    storage_type: str = None
+    storage_uri_env: str = None
+
     config_path: str = os.path.join(MEMGPT_DIR, "config")
     anon_clientid: str = None
 
@@ -80,7 +85,53 @@ class MemGPTConfig:
     # user info
     policies_accepted: bool = False
 
+    @classmethod
+    def load_from_yaml(cls) -> "MemGPTConfig":
+        dotenv.load_dotenv()
+        yaml_file = os.getenv("MEMGPT_CONFIG_PATH")
+
+        if yaml_file is None:
+            raise ValueError("No config file found. Please set the MEMGPT_CONFIG_PATH environment variable.")
+
+        with open(yaml_file, "r") as file:
+            config_data = yaml.safe_load(file)
+
+        if config_data is None:
+            raise ValueError("No config data found in file.")
+
+        if config_data["storage_type"]:
+            config_data["archival_storage_type"] = config_data["storage_type"]
+            config_data["recall_storage_type"] = config_data["storage_type"]
+            config_data["metadata_storage_type"] = config_data["storage_type"]
+            config_data["persistence_manager_type"] = config_data["storage_type"]
+
+            dotenv.load_dotenv()
+
+            if not config_data["storage_uri_env"]:
+                raise ValueError("No storage_uri_env found in config file, required if storage_type is set.")
+
+            storage_uri = os.getenv(config_data["storage_uri_env"])
+
+            if storage_uri is None:
+                raise ValueError(
+                    f"No storage_uri found in environment variables, expected {config_data['storage_uri_env']} to be set.".format(
+                        config_data["storage_uri_env"]
+                    )
+                )
+
+            config_data["archival_storage_uri"] = storage_uri
+            config_data["recall_storage_uri"] = storage_uri
+            config_data["metadata_storage_uri"] = storage_uri
+            config_data["persistence_manager_uri"] = storage_uri
+
+            config_data["default_embedding_config"] = EmbeddingConfig(**config_data["default_embedding_config"])
+            config_data["default_llm_config"] = LLMConfig(**config_data["default_llm_config"])
+
+        return cls(**config_data)
+
     def __post_init__(self):
+        # validate config
+
         # ensure types
         # self.embedding_chunk_size = int(self.embedding_chunk_size)
         # self.embedding_dim = int(self.embedding_dim)
@@ -93,6 +144,7 @@ class MemGPTConfig:
 
     @classmethod
     def load(cls) -> "MemGPTConfig":
+        return MemGPTConfig.load_from_yaml()
         # avoid circular import
         from memgpt.migrate import config_is_compatible, VERSION_CUTOFF
 
@@ -431,3 +483,8 @@ class AgentConfig:
                 utils.printd(f"Removing missing argument {key} from agent config")
                 del agent_config[key]
         return cls(**agent_config)
+
+
+if __name__ == "__main__":
+    config = MemGPTConfig.load()
+    print(config)
