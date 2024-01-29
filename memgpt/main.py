@@ -1,11 +1,5 @@
-import shutil
-import configparser
-import uuid
-import logging
-import glob
 import os
 import sys
-import pickle
 import traceback
 import json
 
@@ -13,43 +7,30 @@ import questionary
 import typer
 
 from rich.console import Console
-from prettytable import PrettyTable
 
 console = Console()
 
-from memgpt.log import logger
 from memgpt.interface import CLIInterface as interface  # for printing to terminal
-from memgpt.config import MemGPTConfig
 import memgpt.agent as agent
 import memgpt.system as system
 import memgpt.constants as constants
 import memgpt.errors as errors
-from memgpt.cli.cli import run, attach, version, server, open_folder, quickstart, migrate, delete_agent
-from memgpt.cli.cli_config import configure, list, add, delete
+from memgpt.cli.cli import run, attach, version, server, open_folder, delete_agent
+from memgpt.cli.cli_config import list, add, delete
 from memgpt.cli.cli_load import app as load_app
-from memgpt.agent_store.storage import StorageConnector, TableType
 from memgpt.metadata import MetadataStore, save_agent
-
-# import benchmark
-from memgpt.benchmark.benchmark import bench
 
 app = typer.Typer(pretty_exceptions_enable=False)
 app.command(name="run")(run)
 app.command(name="version")(version)
 app.command(name="attach")(attach)
-app.command(name="configure")(configure)
 app.command(name="list")(list)
 app.command(name="add")(add)
 app.command(name="delete")(delete)
 app.command(name="server")(server)
 app.command(name="folder")(open_folder)
-app.command(name="quickstart")(quickstart)
 # load data commands
 app.add_typer(load_app, name="load")
-# migration command
-app.command(name="migrate")(migrate)
-# benchmark command
-app.command(name="benchmark")(bench)
 # delete agents
 app.command(name="delete-agent")(delete_agent)
 
@@ -64,7 +45,7 @@ def clear_line(strip_ui=False):
         sys.stdout.flush()
 
 
-def run_agent_loop(memgpt_agent, config: MemGPTConfig, first, ms: MetadataStore, no_verify=False, cfg=None, strip_ui=False):
+def run_agent_loop(memgpt_agent, first, ms: MetadataStore, no_verify=False, cfg=None, strip_ui=False):
     counter = 0
     user_input = None
     skip_next_user_input = False
@@ -77,7 +58,7 @@ def run_agent_loop(memgpt_agent, config: MemGPTConfig, first, ms: MetadataStore,
         print()
 
     multiline_input = False
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     while True:
         if not skip_next_user_input and (counter > 0 or USER_GOES_FIRST):
             # Ask for user input

@@ -2,19 +2,15 @@
 
 We originally tried to use Llama Index VectorIndex, but their limited API was extremely problematic.
 """
-from typing import Any, Optional, List, Iterator, Union, Tuple, Type
-import re
-import pickle
-import os
+from typing import Optional, List, Iterator, Union, Tuple, Type
 import uuid
 from abc import abstractmethod
 
 from typing import List, Optional, Dict
-from tqdm import tqdm
-
-
 from memgpt.config import MemGPTConfig
-from memgpt.data_types import Record, Passage, Document, Message, Source, RecordType
+
+
+from memgpt.data_types import Record, Passage, Document, Message, RecordType
 from memgpt.utils import printd
 
 
@@ -46,7 +42,6 @@ class StorageConnector:
     def __init__(
         self,
         table_type: Union[TableType.ARCHIVAL_MEMORY, TableType.RECALL_MEMORY, TableType.PASSAGES, TableType.DOCUMENTS],
-        config: MemGPTConfig,
         user_id,
         agent_id=None,
     ):
@@ -86,49 +81,40 @@ class StorageConnector:
     @staticmethod
     def get_storage_connector(
         table_type: Union[TableType.ARCHIVAL_MEMORY, TableType.RECALL_MEMORY, TableType.PASSAGES, TableType.DOCUMENTS],
-        config: MemGPTConfig,
         user_id,
         agent_id=None,
     ):
         if table_type == TableType.ARCHIVAL_MEMORY or table_type == TableType.PASSAGES:
-            storage_type = config.archival_storage_type
+            storage_type = MemGPTConfig.archival_storage_type
         elif table_type == TableType.RECALL_MEMORY:
-            storage_type = config.recall_storage_type
+            storage_type = MemGPTConfig.recall_storage_type
         else:
             raise ValueError(f"Table type {table_type} not implemented")
 
         if storage_type == "postgres":
             from memgpt.agent_store.db import PostgresStorageConnector
 
-            return PostgresStorageConnector(table_type, config, user_id, agent_id)
+            return PostgresStorageConnector(table_type, user_id, agent_id)
         elif storage_type == "chroma":
             from memgpt.agent_store.chroma import ChromaStorageConnector
 
-            return ChromaStorageConnector(table_type, config, user_id, agent_id)
-
-        # TODO: add back
-        # elif storage_type == "lancedb":
-        #    from memgpt.agent_store.db import LanceDBConnector
-
-        #    return LanceDBConnector(agent_config=agent_config, table_type=table_type)
+            return ChromaStorageConnector(table_type, user_id, agent_id)
 
         elif storage_type == "sqlite":
             from memgpt.agent_store.db import SQLLiteStorageConnector
 
-            return SQLLiteStorageConnector(table_type, config, user_id, agent_id)
+            return SQLLiteStorageConnector(table_type, user_id, agent_id)
 
         else:
             raise NotImplementedError(f"Storage type {storage_type} not implemented")
 
     @staticmethod
     def get_archival_storage_connector(user_id, agent_id):
-        config = MemGPTConfig.load()
-        return StorageConnector.get_storage_connector(TableType.ARCHIVAL_MEMORY, config, user_id, agent_id)
+        return StorageConnector.get_storage_connector(TableType.ARCHIVAL_MEMORY, user_id, agent_id)
 
     @staticmethod
     def get_recall_storage_connector(user_id, agent_id):
-        config = MemGPTConfig.load()
-        return StorageConnector.get_storage_connector(TableType.RECALL_MEMORY, config, user_id, agent_id)
+        return StorageConnector.get_storage_connector(TableType.RECALL_MEMORY, user_id, agent_id)
 
     @abstractmethod
     def get_filters(self, filters: Optional[Dict] = {}) -> Union[Tuple[list, dict], dict]:

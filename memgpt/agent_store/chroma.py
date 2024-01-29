@@ -1,15 +1,13 @@
 import uuid
-import json
-import re
-from typing import Optional, List, Iterator, Dict, Tuple, cast, Type
+from typing import Optional, List, Iterator, Dict, Tuple, cast
 
 import chromadb
-from chromadb.api.types import Include, GetResult
+from chromadb.api.types import Include
+from memgpt.config import MemGPTConfig
 
 from memgpt.agent_store.storage import StorageConnector, TableType
 from memgpt.utils import printd, datetime_to_timestamp, timestamp_to_datetime
-from memgpt.config import MemGPTConfig
-from memgpt.data_types import Record, Message, Passage, RecordType
+from memgpt.data_types import Record, Passage, RecordType
 
 
 class ChromaStorageConnector(StorageConnector):
@@ -18,18 +16,18 @@ class ChromaStorageConnector(StorageConnector):
     # WARNING: This is not thread safe. Do NOT do concurrent access to the same collection.
     # Timestamps are converted to integer timestamps for chroma (datetime not supported)
 
-    def __init__(self, table_type: str, config: MemGPTConfig, user_id, agent_id=None):
-        super().__init__(table_type=table_type, config=config, user_id=user_id, agent_id=agent_id)
+    def __init__(self, table_type: str, user_id, agent_id=None):
+        super().__init__(table_type=table_type, user_id=user_id, agent_id=agent_id)
 
         assert table_type == TableType.ARCHIVAL_MEMORY or table_type == TableType.PASSAGES, "Chroma only supports archival memory"
 
         # create chroma client
-        if config.archival_storage_path:
-            self.client = chromadb.PersistentClient(config.archival_storage_path)
+        if MemGPTConfig.archival_storage_path:
+            self.client = chromadb.PersistentClient(MemGPTConfig.archival_storage_path)
         else:
             # assume uri={ip}:{port}
-            ip = config.archival_storage_uri.split(":")[0]
-            port = config.archival_storage_uri.split(":")[1]
+            ip = MemGPTConfig.archival_storage_uri.split(":")[0]
+            port = MemGPTConfig.archival_storage_uri.split(":")[1]
             self.client = chromadb.HttpClient(host=ip, port=port)
 
         # get a collection or create if it doesn't exist already

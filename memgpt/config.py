@@ -1,310 +1,65 @@
 import dotenv
 import yaml
-from memgpt.log import logger
 import inspect
 import json
 import os
 import uuid
-from dataclasses import dataclass, field
-import configparser
-import typer
-import questionary
-from typing import Optional
+from dataclasses import dataclass
 
-import memgpt
 import memgpt.utils as utils
-from memgpt.utils import printd, get_schema_diff
-from memgpt.functions.functions import load_all_function_sets
 
-from memgpt.constants import MEMGPT_DIR, LLM_MAX_TOKENS, DEFAULT_HUMAN, DEFAULT_PERSONA, DEFAULT_PRESET
-from memgpt.data_types import AgentState, User, LLMConfig, EmbeddingConfig
+from memgpt.constants import MEMGPT_DIR
+from memgpt.data_types import AgentState, LLMConfig, EmbeddingConfig
 
+dotenv.load_dotenv()
 
-# helper functions for writing to configs
-def get_field(config, section, field):
-    if section not in config:
-        return None
-    if config.has_option(section, field):
-        return config.get(section, field)
-    else:
-        return None
+yaml_file = os.getenv("MEMGPT_CONFIG_PATH")
+
+if yaml_file is None:
+    raise ValueError("No config file found. Please set the MEMGPT_CONFIG_PATH environment variable.")
+
+with open(yaml_file, "r") as file:
+    config_data = yaml.safe_load(file)
 
 
-def set_field(config, section, field, value):
-    if value is None:  # cannot write None
-        return
-    if section not in config:  # create section
-        config.add_section(section)
-    config.set(section, field, value)
-
-
-@dataclass
 class MemGPTConfig:
-    storage_type: str = None
-    storage_uri_env: str = None
+    storage_type = config_data["storage_type"]
+    storage_uri = os.getenv(config_data["storage_uri_env"])
 
-    config_path: str = os.path.join(MEMGPT_DIR, "config")
-    anon_clientid: str = None
+    anon_clientid = config_data["anon_clientid"]
 
     # preset
-    preset: str = DEFAULT_PRESET
+    preset = config_data["preset"]
 
     # persona parameters
-    persona: str = DEFAULT_PERSONA
-    human: str = DEFAULT_HUMAN
+    persona = config_data["persona"]
+    human = config_data["human"]
 
     # model parameters
-    default_llm_config: LLMConfig = field(default_factory=LLMConfig)
+    default_llm_config = LLMConfig(**config_data["default_llm_config"])
 
     # embedding parameters
-    default_embedding_config: EmbeddingConfig = field(default_factory=EmbeddingConfig)
+    default_embedding_config = EmbeddingConfig(**config_data["default_embedding_config"])
 
     # database configs: archival
-    archival_storage_type: str = "chroma"  # local, db
-    archival_storage_path: str = os.path.join(MEMGPT_DIR, "chroma")
-    archival_storage_uri: str = None  # TODO: eventually allow external vector DB
+    archival_storage_type = config_data["storage_type"]
+    archival_storage_uri = storage_uri
 
     # database configs: recall
-    recall_storage_type: str = "sqlite"  # local, db
-    recall_storage_path: str = MEMGPT_DIR
-    recall_storage_uri: str = None  # TODO: eventually allow external vector DB
+    recall_storage_type = config_data["storage_type"]
+    recall_storage_uri = storage_uri
 
     # database configs: metadata storage (sources, agents, data sources)
-    metadata_storage_type: str = "sqlite"
-    metadata_storage_path: str = MEMGPT_DIR
-    metadata_storage_uri: str = None
+    metadata_storage_type = config_data["storage_type"]
+    metadata_storage_uri = storage_uri
 
     # database configs: agent state
-    persistence_manager_type: str = None  # in-memory, db
-    persistence_manager_save_file: str = None  # local file
-    persistence_manager_uri: str = None  # db URI
-
-    # version (for backcompat)
-    memgpt_version: str = memgpt.__version__
-
-    # user info
-    policies_accepted: bool = False
-
-    @classmethod
-    def load_from_yaml(cls) -> "MemGPTConfig":
-        dotenv.load_dotenv()
-        yaml_file = os.getenv("MEMGPT_CONFIG_PATH")
-
-        if yaml_file is None:
-            raise ValueError("No config file found. Please set the MEMGPT_CONFIG_PATH environment variable.")
-
-        with open(yaml_file, "r") as file:
-            config_data = yaml.safe_load(file)
-
-        if config_data is None:
-            raise ValueError("No config data found in file.")
-
-        if config_data["storage_type"]:
-            config_data["archival_storage_type"] = config_data["storage_type"]
-            config_data["recall_storage_type"] = config_data["storage_type"]
-            config_data["metadata_storage_type"] = config_data["storage_type"]
-            config_data["persistence_manager_type"] = config_data["storage_type"]
-
-            dotenv.load_dotenv()
-
-            if not config_data["storage_uri_env"]:
-                raise ValueError("No storage_uri_env found in config file, required if storage_type is set.")
-
-            storage_uri = os.getenv(config_data["storage_uri_env"])
-
-            if storage_uri is None:
-                raise ValueError(
-                    f"No storage_uri found in environment variables, expected {config_data['storage_uri_env']} to be set.".format(
-                        config_data["storage_uri_env"]
-                    )
-                )
-
-            config_data["archival_storage_uri"] = storage_uri
-            config_data["recall_storage_uri"] = storage_uri
-            config_data["metadata_storage_uri"] = storage_uri
-            config_data["persistence_manager_uri"] = storage_uri
-
-            config_data["default_embedding_config"] = EmbeddingConfig(**config_data["default_embedding_config"])
-            config_data["default_llm_config"] = LLMConfig(**config_data["default_llm_config"])
-
-        return cls(**config_data)
-
-    def __post_init__(self):
-        # validate config
-
-        # ensure types
-        # self.embedding_chunk_size = int(self.embedding_chunk_size)
-        # self.embedding_dim = int(self.embedding_dim)
-        # self.context_window = int(self.context_window)
-        pass
+    persistence_manager_type = config_data["storage_type"]
+    persistence_manager_uri = storage_uri
 
     @staticmethod
     def generate_uuid() -> str:
         return uuid.UUID(int=uuid.getnode()).hex
-
-    @classmethod
-    def load(cls) -> "MemGPTConfig":
-        return MemGPTConfig.load_from_yaml()
-        # avoid circular import
-        from memgpt.migrate import config_is_compatible, VERSION_CUTOFF
-
-        if not config_is_compatible(allow_empty=True):
-            error_message = " ".join(
-                [
-                    f"\nYour current config file is incompatible with MemGPT versions later than {VERSION_CUTOFF}.",
-                    f"\nTo use MemGPT, you must either downgrade your MemGPT version (<= {VERSION_CUTOFF}) or regenerate your config using `memgpt configure`, or `memgpt migrate` if you would like to migrate old agents.",
-                ]
-            )
-            raise ValueError(error_message)
-
-        config = configparser.ConfigParser()
-
-        # allow overriding with env variables
-        if os.getenv("MEMGPT_CONFIG_PATH"):
-            config_path = os.getenv("MEMGPT_CONFIG_PATH")
-        else:
-            config_path = MemGPTConfig.config_path
-
-        # insure all configuration directories exist
-        cls.create_config_dir()
-        if os.path.exists(config_path):
-            # read existing config
-            config.read(config_path)
-
-            # Handle extraction of nested LLMConfig and EmbeddingConfig
-            llm_config_dict = {
-                # Extract relevant LLM configuration from the config file
-                "model": get_field(config, "model", "model"),
-                "model_endpoint": get_field(config, "model", "model_endpoint"),
-                "model_endpoint_type": get_field(config, "model", "model_endpoint_type"),
-                "model_wrapper": get_field(config, "model", "model_wrapper"),
-                "context_window": get_field(config, "model", "context_window"),
-            }
-            embedding_config_dict = {
-                # Extract relevant Embedding configuration from the config file
-                "embedding_endpoint": get_field(config, "embedding", "embedding_endpoint"),
-                "embedding_model": get_field(config, "embedding", "embedding_model"),
-                "embedding_endpoint_type": get_field(config, "embedding", "embedding_endpoint_type"),
-                "embedding_dim": get_field(config, "embedding", "embedding_dim"),
-                "embedding_chunk_size": get_field(config, "embedding", "embedding_chunk_size"),
-            }
-            # Remove null values
-            llm_config_dict = {k: v for k, v in llm_config_dict.items() if v is not None}
-            embedding_config_dict = {k: v for k, v in embedding_config_dict.items() if v is not None}
-            # Correct the types that aren't strings
-            if llm_config_dict["context_window"] is not None:
-                llm_config_dict["context_window"] = int(llm_config_dict["context_window"])
-            if embedding_config_dict["embedding_dim"] is not None:
-                embedding_config_dict["embedding_dim"] = int(embedding_config_dict["embedding_dim"])
-            if embedding_config_dict["embedding_chunk_size"] is not None:
-                embedding_config_dict["embedding_chunk_size"] = int(embedding_config_dict["embedding_chunk_size"])
-            # Construct the inner properties
-            llm_config = LLMConfig(**llm_config_dict)
-            embedding_config = EmbeddingConfig(**embedding_config_dict)
-
-            # Everything else
-            config_dict = {
-                # Two prepared configs
-                "default_llm_config": llm_config,
-                "default_embedding_config": embedding_config,
-                # Agent related
-                "preset": get_field(config, "defaults", "preset"),
-                "persona": get_field(config, "defaults", "persona"),
-                "human": get_field(config, "defaults", "human"),
-                "agent": get_field(config, "defaults", "agent"),
-                # Storage related
-                "archival_storage_type": get_field(config, "archival_storage", "type"),
-                "archival_storage_path": get_field(config, "archival_storage", "path"),
-                "archival_storage_uri": get_field(config, "archival_storage", "uri"),
-                "recall_storage_type": get_field(config, "recall_storage", "type"),
-                "recall_storage_path": get_field(config, "recall_storage", "path"),
-                "recall_storage_uri": get_field(config, "recall_storage", "uri"),
-                "metadata_storage_type": get_field(config, "metadata_storage", "type"),
-                "metadata_storage_path": get_field(config, "metadata_storage", "path"),
-                "metadata_storage_uri": get_field(config, "metadata_storage", "uri"),
-                # Misc
-                "anon_clientid": get_field(config, "client", "anon_clientid"),
-                "config_path": config_path,
-                "memgpt_version": get_field(config, "version", "memgpt_version"),
-            }
-
-            # Don't include null values
-            config_dict = {k: v for k, v in config_dict.items() if v is not None}
-
-            return cls(**config_dict)
-
-        # create new config
-        anon_clientid = MemGPTConfig.generate_uuid()
-        config = cls(anon_clientid=anon_clientid, config_path=config_path)
-        config.create_config_dir()  # create dirs
-        config.save()  # save updated config
-
-        return config
-
-    def save(self):
-        import memgpt
-
-        config = configparser.ConfigParser()
-
-        # CLI defaults
-        set_field(config, "defaults", "preset", self.preset)
-        set_field(config, "defaults", "persona", self.persona)
-        set_field(config, "defaults", "human", self.human)
-
-        # model defaults
-        set_field(config, "model", "model", self.default_llm_config.model)
-        set_field(config, "model", "model_endpoint", self.default_llm_config.model_endpoint)
-        set_field(config, "model", "model_endpoint_type", self.default_llm_config.model_endpoint_type)
-        set_field(config, "model", "model_wrapper", self.default_llm_config.model_wrapper)
-        set_field(config, "model", "context_window", str(self.default_llm_config.context_window))
-
-        # embeddings
-        set_field(config, "embedding", "embedding_endpoint_type", self.default_embedding_config.embedding_endpoint_type)
-        set_field(config, "embedding", "embedding_endpoint", self.default_embedding_config.embedding_endpoint)
-        set_field(config, "embedding", "embedding_model", self.default_embedding_config.embedding_model)
-        set_field(config, "embedding", "embedding_dim", str(self.default_embedding_config.embedding_dim))
-        set_field(config, "embedding", "embedding_chunk_size", str(self.default_embedding_config.embedding_chunk_size))
-
-        # archival storage
-        set_field(config, "archival_storage", "type", self.archival_storage_type)
-        set_field(config, "archival_storage", "path", self.archival_storage_path)
-        set_field(config, "archival_storage", "uri", self.archival_storage_uri)
-
-        # recall storage
-        set_field(config, "recall_storage", "type", self.recall_storage_type)
-        set_field(config, "recall_storage", "path", self.recall_storage_path)
-        set_field(config, "recall_storage", "uri", self.recall_storage_uri)
-
-        # metadata storage
-        set_field(config, "metadata_storage", "type", self.metadata_storage_type)
-        set_field(config, "metadata_storage", "path", self.metadata_storage_path)
-        set_field(config, "metadata_storage", "uri", self.metadata_storage_uri)
-
-        # set version
-        set_field(config, "version", "memgpt_version", memgpt.__version__)
-
-        # client
-        if not self.anon_clientid:
-            self.anon_clientid = self.generate_uuid()
-        set_field(config, "client", "anon_clientid", self.anon_clientid)
-
-        # always make sure all directories are present
-        self.create_config_dir()
-
-        with open(self.config_path, "w") as f:
-            config.write(f)
-        logger.debug(f"Saved Config:  {self.config_path}")
-
-    @staticmethod
-    def exists():
-        # allow overriding with env variables
-        if os.getenv("MEMGPT_CONFIG_PATH"):
-            config_path = os.getenv("MEMGPT_CONFIG_PATH")
-        else:
-            config_path = MemGPTConfig.config_path
-
-        assert not os.path.isdir(config_path), f"Config path {config_path} cannot be set to a directory."
-        return os.path.exists(config_path)
 
     @staticmethod
     def create_config_dir():
@@ -358,15 +113,16 @@ class AgentConfig:
         else:
             self.name = name
 
-        config = MemGPTConfig.load()  # get default values
-        self.persona = config.persona if persona is None else persona
-        self.human = config.human if human is None else human
-        self.preset = config.preset if preset is None else preset
-        self.context_window = config.default_llm_config.context_window if context_window is None else context_window
-        self.model = config.default_llm_config.model if model is None else model
-        self.model_endpoint_type = config.default_llm_config.model_endpoint_type if model_endpoint_type is None else model_endpoint_type
-        self.model_endpoint = config.default_llm_config.model_endpoint if model_endpoint is None else model_endpoint
-        self.model_wrapper = config.default_llm_config.model_wrapper if model_wrapper is None else model_wrapper
+        self.persona = MemGPTConfig.persona if persona is None else persona
+        self.human = MemGPTConfig.human if human is None else human
+        self.preset = MemGPTConfig.preset if preset is None else preset
+        self.context_window = MemGPTConfig.default_llm_config.context_window if context_window is None else context_window
+        self.model = MemGPTConfig.default_llm_config.model if model is None else model
+        self.model_endpoint_type = (
+            MemGPTConfig.default_llm_config.model_endpoint_type if model_endpoint_type is None else model_endpoint_type
+        )
+        self.model_endpoint = MemGPTConfig.default_llm_config.model_endpoint if model_endpoint is None else model_endpoint
+        self.model_wrapper = MemGPTConfig.default_llm_config.model_wrapper if model_wrapper is None else model_wrapper
         self.llm_config = LLMConfig(
             model=self.model,
             model_endpoint_type=self.model_endpoint_type,
@@ -375,13 +131,15 @@ class AgentConfig:
             context_window=self.context_window,
         )
         self.embedding_endpoint_type = (
-            config.default_embedding_config.embedding_endpoint_type if embedding_endpoint_type is None else embedding_endpoint_type
+            MemGPTConfig.default_embedding_config.embedding_endpoint_type if embedding_endpoint_type is None else embedding_endpoint_type
         )
-        self.embedding_endpoint = config.default_embedding_config.embedding_endpoint if embedding_endpoint is None else embedding_endpoint
-        self.embedding_model = config.default_embedding_config.embedding_model if embedding_model is None else embedding_model
-        self.embedding_dim = config.default_embedding_config.embedding_dim if embedding_dim is None else embedding_dim
+        self.embedding_endpoint = (
+            MemGPTConfig.default_embedding_config.embedding_endpoint if embedding_endpoint is None else embedding_endpoint
+        )
+        self.embedding_model = MemGPTConfig.default_embedding_config.embedding_model if embedding_model is None else embedding_model
+        self.embedding_dim = MemGPTConfig.default_embedding_config.embedding_dim if embedding_dim is None else embedding_dim
         self.embedding_chunk_size = (
-            config.default_embedding_config.embedding_chunk_size if embedding_chunk_size is None else embedding_chunk_size
+            MemGPTConfig.default_embedding_config.embedding_chunk_size if embedding_chunk_size is None else embedding_chunk_size
         )
         self.embedding_config = EmbeddingConfig(
             embedding_endpoint_type=self.embedding_endpoint_type,

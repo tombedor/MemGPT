@@ -1,20 +1,16 @@
 import datetime
 import uuid
-import glob
 import inspect
-import os
 import json
 from pathlib import Path
 import traceback
 from typing import List, Tuple, Optional, cast
 
-from box import Box
 
 from memgpt.data_types import AgentState, Message, EmbeddingConfig
 from memgpt.models import chat_completion_response
 from memgpt.interface import AgentInterface
-from memgpt.persistence_manager import PersistenceManager, LocalStateManager
-from memgpt.config import MemGPTConfig
+from memgpt.persistence_manager import LocalStateManager
 from memgpt.system import get_login_event, package_function_response, package_summarize_message, get_initial_boot_messages
 from memgpt.memory import CoreMemory as InContextMemory, summarize_messages
 from memgpt.llm_api_tools import create, is_context_overflow_error
@@ -802,31 +798,6 @@ class Agent(object):
                 agent_id=self.agent_state.id, user_id=self.agent_state.user_id, model=self.model, openai_message_dict=new_system_message
             )
         )
-
-    # def to_agent_state(self) -> AgentState:
-    #    # The state may have change since the last time we wrote it
-    #    updated_state = {
-    #        "persona": self.memory.persona,
-    #        "human": self.memory.human,
-    #        "system": self.system,
-    #        "functions": self.functions,
-    #        "messages": [str(msg.id) for msg in self._messages],
-    #    }
-
-    #    agent_state = AgentState(
-    #        name=self.agent_state.name,
-    #        user_id=self.agent_state.user_id,
-    #        persona=self.agent_state.persona,
-    #        human=self.agent_state.human,
-    #        llm_config=self.agent_state.llm_config,
-    #        embedding_config=self.agent_state.embedding_config,
-    #        preset=self.agent_state.preset,
-    #        id=self.agent_state.id,
-    #        created_at=self.agent_state.created_at,
-    #        state=updated_state,
-    #    )
-
-    #    return agent_state
 
     def add_function(self, function_name: str) -> str:
         if function_name in self.functions_python.keys():
