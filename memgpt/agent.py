@@ -817,31 +817,6 @@ class Agent(object):
             )
         )
 
-    # def to_agent_state(self) -> AgentState:
-    #    # The state may have change since the last time we wrote it
-    #    updated_state = {
-    #        "persona": self.memory.persona,
-    #        "human": self.memory.human,
-    #        "system": self.system,
-    #        "functions": self.functions,
-    #        "messages": [str(msg.id) for msg in self._messages],
-    #    }
-
-    #    agent_state = AgentState(
-    #        name=self.agent_state.name,
-    #        user_id=self.agent_state.user_id,
-    #        persona=self.agent_state.persona,
-    #        human=self.agent_state.human,
-    #        llm_config=self.agent_state.llm_config,
-    #        embedding_config=self.agent_state.embedding_config,
-    #        preset=self.agent_state.preset,
-    #        id=self.agent_state.id,
-    #        created_at=self.agent_state.created_at,
-    #        state=updated_state,
-    #    )
-
-    #    return agent_state
-
     def add_function(self, function_name: str) -> str:
         if function_name in self.functions_python.keys():
             msg = f"Function {function_name} already loaded"

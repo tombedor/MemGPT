@@ -2,6 +2,7 @@ import uuid
 from typing import Callable, Optional, List, Dict, Union, Any, Tuple
 
 from autogen.agentchat import Agent, ConversableAgent, UserProxyAgent, GroupChat, GroupChatManager
+from memgpt.config import MemGPTConfig
 
 from memgpt.agent import Agent as MemGPTAgent
 from memgpt.autogen.interface import AutoGenInterface
@@ -13,7 +14,6 @@ from memgpt.config import MemGPTConfig
 from memgpt.credentials import MemGPTCredentials
 from memgpt.cli.cli import attach
 from memgpt.cli.cli_load import load_directory, load_webpage, load_index, load_database, load_vector_database
-from memgpt.agent_store.storage import StorageConnector, TableType
 from memgpt.metadata import MetadataStore, save_agent
 from memgpt.data_types import AgentState, User, LLMConfig, EmbeddingConfig
 
@@ -45,8 +45,7 @@ class MemGPTConversableAgent(ConversableAgent):
 
         self._is_termination_msg = is_termination_msg if is_termination_msg is not None else (lambda x: x == "TERMINATE")
 
-        config = MemGPTConfig.load()
-        self.ms = MetadataStore(config)
+        self.ms = MetadataStore()
 
     def save(self):
         """Save the underlying MemGPT agent to the database"""
@@ -242,11 +241,10 @@ def load_autogen_memgpt_agent(
 
     interface = AutoGenInterface(**interface_kwargs) if interface is None else interface
 
-    config = MemGPTConfig.load()
     # Create the default user, or load the specified user
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     if "user_id" not in agent_config:
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
         user = ms.get_user(user_id=user_id)
         if user is None:
             ms.create_user(User(id=user_id))
@@ -312,18 +310,17 @@ def create_autogen_memgpt_agent(
     """
     interface = AutoGenInterface(**interface_kwargs) if interface is None else interface
 
-    config = MemGPTConfig.load()
-    llm_config = config.default_llm_config
-    embedding_config = config.default_embedding_config
+    llm_config = MemGPTConfig.default_llm_config
+    embedding_config = MemGPTConfig.default_embedding_config
 
     # Overwrite parts of the LLM and embedding configs that were passed into the config dicts
     llm_config_was_modified = update_config_from_dict(llm_config, agent_config)
     embedding_config_was_modified = update_config_from_dict(embedding_config, agent_config)
 
     # Create the default user, or load the specified user
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     if "user_id" not in agent_config:
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
         user = ms.get_user(user_id=user_id)
         if user is None:
             ms.create_user(User(id=user_id))
@@ -405,12 +402,11 @@ def create_memgpt_autogen_agent_from_config(
         user_desc = "Work by yourself, the user won't reply. Elaborate as much as possible."
 
     # If using azure or openai, save the credentials to the config
-    config = MemGPTConfig.load()
     credentials = MemGPTCredentials.load()
 
     if (
         llm_config["model_endpoint_type"] in ["azure", "openai"]
-        or llm_config["model_endpoint_type"] != config.default_llm_config.model_endpoint_type
+        or llm_config["model_endpoint_type"] != MemGPTConfig.default_llm_config.model_endpoint_type
     ):
         # we load here to make sure we don't override existing values
         # all we want to do is add extra credentials

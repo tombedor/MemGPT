@@ -1,8 +1,5 @@
 import uuid
-import json
-import requests
 import sys
-import shutil
 import io
 import logging
 from pathlib import Path
@@ -15,231 +12,19 @@ import typer
 import questionary
 from llama_index import set_global_service_context
 from llama_index import ServiceContext
+from memgpt.config import MemGPTConfig
 
 from memgpt.log import logger
 from memgpt.interface import CLIInterface as interface  # for printing to terminal
-from memgpt.cli.cli_config import configure
 import memgpt.presets.presets as presets
 import memgpt.utils as utils
 from memgpt.utils import printd, open_folder_in_explorer, suppress_stdout
-from memgpt.config import MemGPTConfig
-from memgpt.credentials import MemGPTCredentials
-from memgpt.constants import MEMGPT_DIR, CLI_WARNING_PREFIX, JSON_ENSURE_ASCII
+from memgpt.constants import MEMGPT_DIR, CLI_WARNING_PREFIX
 from memgpt.agent import Agent
 from memgpt.embeddings import embedding_model
 from memgpt.server.constants import WS_DEFAULT_PORT, REST_DEFAULT_PORT
-from memgpt.data_types import AgentState, LLMConfig, EmbeddingConfig, User, Passage
+from memgpt.data_types import AgentState, User, Passage
 from memgpt.metadata import MetadataStore, save_agent
-from memgpt.migrate import migrate_all_agents, migrate_all_sources
-
-
-def migrate(
-    debug: Annotated[bool, typer.Option(help="Print extra tracebacks for failed migrations")] = False,
-):
-    """Migrate old agents (pre 0.2.12) to the new database system"""
-    migrate_all_agents(debug=debug)
-    migrate_all_sources(debug=debug)
-
-
-class QuickstartChoice(Enum):
-    openai = "openai"
-    # azure = "azure"
-    memgpt_hosted = "memgpt"
-
-
-def str_to_quickstart_choice(choice_str: str) -> QuickstartChoice:
-    try:
-        return QuickstartChoice[choice_str]
-    except KeyError:
-        valid_options = [choice.name for choice in QuickstartChoice]
-        raise ValueError(f"{choice_str} is not a valid QuickstartChoice. Valid options are: {valid_options}")
-
-
-def set_config_with_dict(new_config: dict) -> bool:
-    """Set the base config using a dict"""
-    from memgpt.utils import printd
-
-    old_config = MemGPTConfig.load()
-    modified = False
-    for k, v in vars(old_config).items():
-        if k in new_config:
-            if v != new_config[k]:
-                printd(f"Replacing config {k}: {v} -> {new_config[k]}")
-                modified = True
-                # old_config[k] = new_config[k]
-                setattr(old_config, k, new_config[k])  # Set the new value using dot notation
-            else:
-                printd(f"Skipping new config {k}: {v} == {new_config[k]}")
-
-    # update embedding config
-    for k, v in vars(old_config.default_embedding_config).items():
-        if k in new_config:
-            if v != new_config[k]:
-                printd(f"Replacing config {k}: {v} -> {new_config[k]}")
-                modified = True
-                # old_config[k] = new_config[k]
-                setattr(old_config.default_embedding_config, k, new_config[k])
-        else:
-            printd(f"Skipping new config {k}: {v} == {new_config[k]}")
-
-    # update llm config
-    for k, v in vars(old_config.default_llm_config).items():
-        if k in new_config:
-            if v != new_config[k]:
-                printd(f"Replacing config {k}: {v} -> {new_config[k]}")
-                modified = True
-                # old_config[k] = new_config[k]
-                setattr(old_config.default_llm_config, k, new_config[k])
-        else:
-            printd(f"Skipping new config {k}: {v} == {new_config[k]}")
-
-    if modified:
-        printd(f"Saving new config file.")
-        old_config.save()
-        typer.secho(f"📖 MemGPT configuration file updated!", fg=typer.colors.GREEN)
-        typer.secho(
-            "\n".join(
-                [
-                    f"🧠 model\t-> {old_config.default_llm_config.model}",
-                    f"🖥️  endpoint\t-> {old_config.default_llm_config.model_endpoint}",
-                ]
-            ),
-            fg=typer.colors.GREEN,
-        )
-        return True
-    else:
-        typer.secho(f"📖 MemGPT configuration file unchanged.", fg=typer.colors.WHITE)
-        typer.secho(
-            "\n".join(
-                [
-                    f"🧠 model\t-> {old_config.default_llm_config.model}",
-                    f"🖥️  endpoint\t-> {old_config.default_llm_config.model_endpoint}",
-                ]
-            ),
-            fg=typer.colors.WHITE,
-        )
-        return False
-
-
-def quickstart(
-    backend: Annotated[QuickstartChoice, typer.Option(help="Quickstart setup backend")] = "memgpt",
-    latest: Annotated[bool, typer.Option(help="Use --latest to pull the latest config from online")] = False,
-    debug: Annotated[bool, typer.Option(help="Use --debug to enable debugging output")] = False,
-    terminal: bool = True,
-):
-    """Set the base config file with a single command"""
-
-    # setup logger
-    utils.DEBUG = debug
-    logging.getLogger().setLevel(logging.CRITICAL)
-    if debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-
-    # make sure everything is set up properly
-    MemGPTConfig.create_config_dir()
-    credentials = MemGPTCredentials.load()
-
-    config_was_modified = False
-    if backend == QuickstartChoice.memgpt_hosted:
-        # if latest, try to pull the config from the repo
-        # fallback to using local
-        if latest:
-            # Download the latest memgpt hosted config
-            url = "https://raw.githubusercontent.com/cpacker/MemGPT/main/memgpt/configs/memgpt_hosted.json"
-            response = requests.get(url)
-
-            # Check if the request was successful
-            if response.status_code == 200:
-                # Parse the response content as JSON
-                config = response.json()
-                # Output a success message and the first few items in the dictionary as a sample
-                printd("JSON config file downloaded successfully.")
-                config_was_modified = set_config_with_dict(config)
-            else:
-                typer.secho(f"Failed to download config from {url}. Status code: {response.status_code}", fg=typer.colors.RED)
-
-                # Load the file from the relative path
-                script_dir = os.path.dirname(__file__)  # Get the directory where the script is located
-                backup_config_path = os.path.join(script_dir, "..", "configs", "memgpt_hosted.json")
-                try:
-                    with open(backup_config_path, "r", encoding="utf-8") as file:
-                        backup_config = json.load(file)
-                    printd("Loaded backup config file successfully.")
-                    config_was_modified = set_config_with_dict(backup_config)
-                except FileNotFoundError:
-                    typer.secho(f"Backup config file not found at {backup_config_path}", fg=typer.colors.RED)
-                    return
-        else:
-            # Load the file from the relative path
-            script_dir = os.path.dirname(__file__)  # Get the directory where the script is located
-            backup_config_path = os.path.join(script_dir, "..", "configs", "memgpt_hosted.json")
-            try:
-                with open(backup_config_path, "r", encoding="utf-8") as file:
-                    backup_config = json.load(file)
-                printd("Loaded config file successfully.")
-                config_was_modified = set_config_with_dict(backup_config)
-            except FileNotFoundError:
-                typer.secho(f"Config file not found at {backup_config_path}", fg=typer.colors.RED)
-                return
-
-    elif backend == QuickstartChoice.openai:
-        # Make sure we have an API key
-        api_key = os.getenv("OPENAI_API_KEY")
-        while api_key is None or len(api_key) == 0:
-            # Ask for API key as input
-            api_key = questionary.password("Enter your OpenAI API key (starts with 'sk-', see https://platform.openai.com/api-keys):").ask()
-        credentials.openai_key = api_key
-        credentials.save()
-
-        # if latest, try to pull the config from the repo
-        # fallback to using local
-        if latest:
-            url = "https://raw.githubusercontent.com/cpacker/MemGPT/main/memgpt/configs/openai.json"
-            response = requests.get(url)
-
-            # Check if the request was successful
-            if response.status_code == 200:
-                # Parse the response content as JSON
-                config = response.json()
-                # Output a success message and the first few items in the dictionary as a sample
-                print("JSON config file downloaded successfully.")
-                config_was_modified = set_config_with_dict(config)
-            else:
-                typer.secho(f"Failed to download config from {url}. Status code: {response.status_code}", fg=typer.colors.RED)
-
-                # Load the file from the relative path
-                script_dir = os.path.dirname(__file__)  # Get the directory where the script is located
-                backup_config_path = os.path.join(script_dir, "..", "configs", "openai.json")
-                try:
-                    with open(backup_config_path, "r", encoding="utf-8") as file:
-                        backup_config = json.load(file)
-                    printd("Loaded backup config file successfully.")
-                    config_was_modified = set_config_with_dict(backup_config)
-                except FileNotFoundError:
-                    typer.secho(f"Backup config file not found at {backup_config_path}", fg=typer.colors.RED)
-                    return
-        else:
-            # Load the file from the relative path
-            script_dir = os.path.dirname(__file__)  # Get the directory where the script is located
-            backup_config_path = os.path.join(script_dir, "..", "configs", "openai.json")
-            try:
-                with open(backup_config_path, "r", encoding="utf-8") as file:
-                    backup_config = json.load(file)
-                printd("Loaded config file successfully.")
-                config_was_modified = set_config_with_dict(backup_config)
-            except FileNotFoundError:
-                typer.secho(f"Config file not found at {backup_config_path}", fg=typer.colors.RED)
-                return
-
-    else:
-        raise NotImplementedError(backend)
-
-    # 'terminal' = quickstart was run alone, in which case we should guide the user on the next command
-    if terminal:
-        if config_was_modified:
-            typer.secho('⚡ Run "memgpt run" to create an agent with the new config.', fg=typer.colors.YELLOW)
-        else:
-            typer.secho('⚡ Run "memgpt run" to create an agent.', fg=typer.colors.YELLOW)
 
 
 def open_folder():
@@ -256,8 +41,8 @@ class ServerChoice(Enum):
     ws_api = "websocket"
 
 
-def create_default_user_or_exit(config: MemGPTConfig, ms: MetadataStore):
-    user_id = uuid.UUID(config.anon_clientid)
+def create_default_user_or_exit(ms: MetadataStore):
+    user_id = uuid.UUID(MemGPTConfig.anon_clientid)
     user = ms.get_user(user_id=user_id)
     if user is None:
         ms.create_user(User(id=user_id))
@@ -296,13 +81,8 @@ def server(
         import uvicorn
         from memgpt.server.rest_api.server import app
 
-        if MemGPTConfig.exists():
-            config = MemGPTConfig.load()
-            ms = MetadataStore(config)
-            create_default_user_or_exit(config, ms)
-        else:
-            typer.secho(f"No configuration exists. Run memgpt configure before starting the server.", fg=typer.colors.RED)
-            sys.exit(1)
+        ms = MetadataStore()
+        create_default_user_or_exit(ms)
 
         try:
             # Start the subprocess in a new session
@@ -386,89 +166,9 @@ def run(
     else:
         logger.setLevel(logging.CRITICAL)
 
-    from memgpt.migrate import config_is_compatible, wipe_config_and_reconfigure, VERSION_CUTOFF
-
-    if not config_is_compatible(allow_empty=True):
-        typer.secho(f"\nYour current config file is incompatible with MemGPT versions later than {VERSION_CUTOFF}\n", fg=typer.colors.RED)
-        choices = [
-            "Run the full config setup (recommended)",
-            "Create a new config using defaults",
-            "Cancel",
-        ]
-        selection = questionary.select(
-            f"To use MemGPT, you must either downgrade your MemGPT version (<= {VERSION_CUTOFF}), or regenerate your config. Would you like to proceed?",
-            choices=choices,
-            default=choices[0],
-        ).ask()
-        if selection == choices[0]:
-            try:
-                wipe_config_and_reconfigure()
-            except Exception as e:
-                typer.secho(f"Fresh config generation failed - error:\n{e}", fg=typer.colors.RED)
-                raise
-        elif selection == choices[1]:
-            try:
-                # Don't create a config, so that the next block of code asking about quickstart is run
-                wipe_config_and_reconfigure(run_configure=False, create_config=False)
-            except Exception as e:
-                typer.secho(f"Fresh config generation failed - error:\n{e}", fg=typer.colors.RED)
-                raise
-        else:
-            typer.secho("MemGPT config regeneration cancelled", fg=typer.colors.RED)
-            raise KeyboardInterrupt()
-
-        typer.secho("Note: if you would like to migrate old agents to the new release, please run `memgpt migrate`!", fg=typer.colors.GREEN)
-
-    if not MemGPTConfig.exists():
-        # if no config, ask about quickstart
-        # do you want to do:
-        # - openai (run quickstart)
-        # - memgpt hosted (run quickstart)
-        # - other (run configure)
-        if yes:
-            # if user is passing '-y' to bypass all inputs, use memgpt hosted
-            # since it can't fail out if you don't have an API key
-            quickstart(backend=QuickstartChoice.memgpt_hosted)
-            config = MemGPTConfig()
-
-        else:
-            config_choices = {
-                "memgpt": "Use the free MemGPT endpoints",
-                "openai": "Use OpenAI (requires an OpenAI API key)",
-                "other": "Other (OpenAI Azure, custom LLM endpoint, etc)",
-            }
-            print()
-            config_selection = questionary.select(
-                "How would you like to set up MemGPT?",
-                choices=list(config_choices.values()),
-                default=config_choices["memgpt"],
-            ).ask()
-
-            if config_selection == config_choices["memgpt"]:
-                print()
-                quickstart(backend=QuickstartChoice.memgpt_hosted, debug=debug, terminal=False, latest=False)
-            elif config_selection == config_choices["openai"]:
-                print()
-                quickstart(backend=QuickstartChoice.openai, debug=debug, terminal=False, latest=False)
-            elif config_selection == config_choices["other"]:
-                configure()
-            else:
-                raise ValueError(config_selection)
-
-            config = MemGPTConfig.load()
-
-    else:  # load config
-        config = MemGPTConfig.load()
-
-        # force re-configuration is config is from old version
-        if config.memgpt_version is None:  # TODO: eventually add checks for older versions, if config changes again
-            typer.secho("MemGPT has been updated to a newer version, so re-running configuration.", fg=typer.colors.YELLOW)
-            configure()
-            config = MemGPTConfig.load()
-
     # read user id from config
-    ms = MetadataStore(config)
-    user = create_default_user_or_exit(config, ms)
+    ms = MetadataStore()
+    user = create_default_user_or_exit(ms)
 
     # determine agent to use, if not provided
     if not yes and not agent:
@@ -552,8 +252,8 @@ def run(
             # agent = f"agent_{agent_count}"
             agent = utils.create_random_username()
 
-        llm_config = config.default_llm_config
-        embedding_config = config.default_embedding_config  # TODO allow overriding embedding params via CLI run
+        llm_config = MemGPTConfig.default_llm_config
+        embedding_config = MemGPTConfig.default_embedding_config  # TODO allow overriding embedding params via CLI run
 
         # Allow overriding model specifics (model, model wrapper, model endpoint IP + type, context_window)
         if model and model != llm_config.model:
@@ -587,9 +287,9 @@ def run(
         agent_state = AgentState(
             name=agent,
             user_id=user.id,
-            persona=persona if persona else config.persona,
-            human=human if human else config.human,
-            preset=preset if preset else config.preset,
+            persona=persona if persona else MemGPTConfig.persona,
+            human=human if human else MemGPTConfig.human,
+            preset=preset if preset else MemGPTConfig.preset,
             llm_config=llm_config,
             embedding_config=embedding_config,
         )
@@ -650,7 +350,7 @@ def run(
     from memgpt.main import run_agent_loop
 
     print()  # extra space
-    run_agent_loop(memgpt_agent, config, first, ms, no_verify)  # TODO: add back no_verify
+    run_agent_loop(memgpt_agent, first, ms, no_verify)  # TODO: add back no_verify
 
 
 def delete_agent(
@@ -659,10 +359,9 @@ def delete_agent(
 ):
     """Delete an agent from the database"""
     # use client ID is no user_id provided
-    config = MemGPTConfig.load()
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     if user_id is None:
-        user = create_default_user_or_exit(config, ms)
+        user = create_default_user_or_exit(ms)
     else:
         user = ms.get_user(user_id=uuid.UUID(user_id))
 
@@ -697,15 +396,14 @@ def attach(
     user_id: uuid.UUID = None,
 ):
     # use client ID is no user_id provided
-    config = MemGPTConfig.load()
     if user_id is None:
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
     try:
         # loads the data contained in data source into the agent's memory
         from memgpt.agent_store.storage import StorageConnector, TableType
         from tqdm import tqdm
 
-        ms = MetadataStore(config)
+        ms = MetadataStore()
         agent = ms.get_agent(agent_name=agent_name, user_id=user_id)
         assert agent is not None, f"No agent found under agent_name={agent_name}, user_id={user_id}"
         source = ms.get_source(source_name=data_source, user_id=user_id)
@@ -713,8 +411,8 @@ def attach(
 
         # get storage connectors
         with suppress_stdout():
-            source_storage = StorageConnector.get_storage_connector(TableType.PASSAGES, config, user_id=user_id)
-            dest_storage = StorageConnector.get_storage_connector(TableType.ARCHIVAL_MEMORY, config, user_id=user_id, agent_id=agent.id)
+            source_storage = StorageConnector.get_storage_connector(TableType.PASSAGES, user_id=user_id)
+            dest_storage = StorageConnector.get_storage_connector(TableType.ARCHIVAL_MEMORY, user_id=user_id, agent_id=agent.id)
 
         size = source_storage.size({"data_source": data_source})
         typer.secho(f"Ingesting {size} passages into {agent.name}", fg=typer.colors.GREEN)
