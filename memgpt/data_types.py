@@ -1,13 +1,14 @@
 """ This module contains the data types used by MemGPT. Each data type must include a function to create a DB model. """
+import os
 import uuid
 from datetime import datetime
-from abc import abstractmethod
 from typing import Optional, List, Dict, TypeVar
+import dotenv
 import numpy as np
+import yaml
 
-from memgpt.constants import DEFAULT_HUMAN, DEFAULT_MEMGPT_MODEL, DEFAULT_PERSONA, DEFAULT_PRESET, LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
-from memgpt.utils import get_local_time, format_datetime, get_utc_time
-from memgpt.models import chat_completion_response
+from memgpt.constants import LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
+from memgpt.utils import printd
 
 
 class Record:
@@ -117,6 +118,12 @@ class Message(Record):
         else:
             assert tool_call_id is None
         self.tool_call_id = tool_call_id
+
+        if self.text is None:
+            printd("Text is blank for message: inserting placeholder text")
+            self.text = "Placeholder text inserted."
+
+        assert self.text is not None, "Assistant messages must have text"
 
     # def __repr__(self):
     #    pass

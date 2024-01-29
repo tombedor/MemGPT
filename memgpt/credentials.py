@@ -1,25 +1,30 @@
-from memgpt.log import logger
-import inspect
-import json
 import os
-import uuid
 from dataclasses import dataclass
 import configparser
-import typer
-import questionary
 from typing import Optional
 
-import memgpt
-import memgpt.utils as utils
-from memgpt.utils import printd, get_schema_diff
-from memgpt.functions.functions import load_all_function_sets
 
-from memgpt.constants import MEMGPT_DIR, LLM_MAX_TOKENS, DEFAULT_HUMAN, DEFAULT_PERSONA, DEFAULT_PRESET
-from memgpt.data_types import AgentState, User, LLMConfig, EmbeddingConfig
-from memgpt.config import get_field, set_field
+from memgpt.constants import MEMGPT_DIR
 
 
 SUPPORTED_AUTH_TYPES = ["bearer_token", "api_key"]
+
+# helper functions for writing to configs
+def get_field(config, section, field):
+    if section not in config:
+        return None
+    if config.has_option(section, field):
+        return config.get(section, field)
+    else:
+        return None
+
+
+def set_field(config, section, field, value):
+    if value is None:  # cannot write None
+        return
+    if section not in config:  # create section
+        config.add_section(section)
+    config.set(section, field, value)
 
 
 @dataclass

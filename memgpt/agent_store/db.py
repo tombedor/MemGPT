@@ -1,32 +1,25 @@
 import os
 import base64
-from sqlalchemy import create_engine, Column, String, BIGINT, select, inspect, text, JSON, BLOB, BINARY, ARRAY, DateTime
+from sqlalchemy import create_engine, Column, String, BIGINT, select, text, JSON, BINARY, DateTime
 from sqlalchemy import func, or_, and_
 from sqlalchemy import desc, asc
 from sqlalchemy.orm import sessionmaker, mapped_column, declarative_base
 from sqlalchemy.orm.session import close_all_sessions
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy_json import mutable_json_type, MutableJson
+from sqlalchemy_json import MutableJson
 from sqlalchemy import TypeDecorator, CHAR
 import uuid
 
-import re
 from tqdm import tqdm
-from typing import Optional, List, Iterator, Dict, Tuple
+from typing import Optional, List, Iterator, Dict
 import numpy as np
 from tqdm import tqdm
-import pandas as pd
+from memgpt.config import MemGPTConfig
 
-from memgpt.config import MemGPTConfig
 from memgpt.agent_store.storage import StorageConnector, TableType
-from memgpt.config import MemGPTConfig
-from memgpt.utils import printd
 from memgpt.data_types import Record, Message, Passage, ToolCall, RecordType
 from memgpt.constants import MAX_EMBEDDING_DIM
-from memgpt.metadata import MetadataStore
-
-from datetime import datetime
 
 
 # Custom UUID type
@@ -109,7 +102,6 @@ Base = declarative_base()
 
 
 def get_db_model(
-    config: MemGPTConfig,
     table_name: str,
     table_type: TableType,
     user_id: uuid.UUID,
@@ -247,9 +239,8 @@ def get_db_model(
 
 
 class SQLStorageConnector(StorageConnector):
-    def __init__(self, table_type: str, config: MemGPTConfig, user_id, agent_id=None):
-        super().__init__(table_type=table_type, config=config, user_id=user_id, agent_id=agent_id)
-        self.config = config
+    def __init__(self, table_type: str, user_id, agent_id=None):
+        super().__init__(table_type=table_type, user_id=user_id, agent_id=agent_id)
 
     def get_filters(self, filters: Optional[Dict] = {}):
         if filters is not None:
@@ -426,24 +417,24 @@ class PostgresStorageConnector(SQLStorageConnector):
 
     # TODO: this should probably eventually be moved into a parent DB class
 
-    def __init__(self, table_type: str, config: MemGPTConfig, user_id, agent_id=None):
+    def __init__(self, table_type: str, user_id, agent_id=None):
         from pgvector.sqlalchemy import Vector
 
-        super().__init__(table_type=table_type, config=config, user_id=user_id, agent_id=agent_id)
+        super().__init__(table_type=table_type, user_id=user_id, agent_id=agent_id)
 
         # get storage URI
         if table_type == TableType.ARCHIVAL_MEMORY or table_type == TableType.PASSAGES:
-            self.uri = self.config.archival_storage_uri
-            if self.config.archival_storage_uri is None:
-                raise ValueError(f"Must specifiy archival_storage_uri in config {self.config.config_path}")
+            self.uri = MemGPTConfig.archival_storage_uri
+            if MemGPTConfig.archival_storage_uri is None:
+                raise ValueError(f"Must specifiy archival_storage_uri in config {MemGPTConfig.config_path}")
         elif table_type == TableType.RECALL_MEMORY:
-            self.uri = self.config.recall_storage_uri
-            if self.config.recall_storage_uri is None:
-                raise ValueError(f"Must specifiy recall_storage_uri in config {self.config.config_path}")
+            self.uri = MemGPTConfig.recall_storage_uri
+            if MemGPTConfig.recall_storage_uri is None:
+                raise ValueError(f"Must specifiy recall_storage_uri in config {MemGPTConfig.config_path}")
         else:
             raise ValueError(f"Table type {table_type} not implemented")
         # create table
-        self.db_model = get_db_model(config, self.table_name, table_type, user_id, agent_id)
+        self.db_model = get_db_model(self.table_name, table_type, user_id, agent_id)
         self.engine = create_engine(self.uri)
         for c in self.db_model.__table__.columns:
             if c.name == "embedding":
@@ -468,24 +459,24 @@ class PostgresStorageConnector(SQLStorageConnector):
 
 
 class SQLLiteStorageConnector(SQLStorageConnector):
-    def __init__(self, table_type: str, config: MemGPTConfig, user_id, agent_id=None):
-        super().__init__(table_type=table_type, config=config, user_id=user_id, agent_id=agent_id)
+    def __init__(self, table_type: str, user_id, agent_id=None):
+        super().__init__(table_type=table_type, user_id=user_id, agent_id=agent_id)
 
         # get storage URI
         if table_type == TableType.ARCHIVAL_MEMORY or table_type == TableType.PASSAGES:
             raise ValueError(f"Table type {table_type} not implemented")
         elif table_type == TableType.RECALL_MEMORY:
             # TODO: eventually implement URI option
-            self.path = self.config.recall_storage_path
+            self.path = MemGPTConfig.recall_storage_path
             if self.path is None:
-                raise ValueError(f"Must specifiy recall_storage_path in config {self.config.recall_storage_path}")
+                raise ValueError(f"Must specifiy recall_storage_path in config {MemGPTConfig.recall_storage_path}")
         else:
             raise ValueError(f"Table type {table_type} not implemented")
 
         self.path = os.path.join(self.path, f"sqlite.db")
 
         # Create the SQLAlchemy engine
-        self.db_model = get_db_model(config, self.table_name, table_type, user_id, agent_id, dialect="sqlite")
+        self.db_model = get_db_model(self.table_name, table_type, user_id, agent_id, dialect="sqlite")
         self.engine = create_engine(f"sqlite:///{self.path}")
         Base.metadata.create_all(self.engine, tables=[self.db_model.__table__])  # Create the table if it doesn't exist
         self.session_maker = sessionmaker(bind=self.engine)

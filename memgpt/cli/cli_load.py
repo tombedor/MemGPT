@@ -13,16 +13,15 @@ from tqdm import tqdm
 import numpy as np
 import typer
 import uuid
+from memgpt.config import MemGPTConfig
 
 from memgpt.embeddings import embedding_model, check_and_split_text
 from memgpt.agent_store.storage import StorageConnector
-from memgpt.config import MemGPTConfig
 from memgpt.metadata import MetadataStore
-from memgpt.data_types import Source, Passage, Document, User
-from memgpt.utils import get_utc_time, suppress_stdout
+from memgpt.data_types import Source, Passage
+from memgpt.utils import suppress_stdout
 from memgpt.agent_store.storage import StorageConnector, TableType
 
-from datetime import datetime
 
 from llama_index import (
     VectorStoreIndex,
@@ -34,13 +33,13 @@ from llama_index import (
 app = typer.Typer()
 
 
-def insert_passages_into_source(passages: List[Passage], source_name: str, user_id: uuid.UUID, config: MemGPTConfig):
+def insert_passages_into_source(passages: List[Passage], source_name: str, user_id: uuid.UUID):
     """Insert a list of passages into a source by updating storage connectors and metadata store"""
-    storage = StorageConnector.get_storage_connector(TableType.PASSAGES, config, user_id)
+    storage = StorageConnector.get_storage_connector(TableType.PASSAGES, user_id)
     orig_size = storage.size()
 
     # insert metadata store
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     source = ms.get_source(user_id=user_id, source_name=source_name)
     if not source:
         # create new
@@ -64,18 +63,17 @@ def insert_passages_into_source(passages: List[Passage], source_name: str, user_
 def store_docs(name, docs, user_id=None, show_progress=True):
     """Common function for embedding and storing documents"""
 
-    config = MemGPTConfig.load()
     if user_id is None:  # assume running local with single user
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
 
     # ensure doc text is not too long
     # TODO: replace this to instead split up docs that are too large
     # (this is a temporary fix to avoid breaking the llama index)
     for doc in docs:
-        doc.text = check_and_split_text(doc.text, config.default_embedding_config.embedding_model)[0]
+        doc.text = check_and_split_text(doc.text, MemGPTConfig.default_embedding_config.embedding_model)[0]
 
     # record data source metadata
-    ms = MetadataStore(config)
+    ms = MetadataStore()
     user = ms.get_user(user_id)
     if user is None:
         raise ValueError(f"Cannot find user {user_id} in metadata store. Please run 'memgpt configure'.")
@@ -83,8 +81,8 @@ def store_docs(name, docs, user_id=None, show_progress=True):
     data_source = Source(
         user_id=user.id,
         name=name,
-        embedding_model=config.default_embedding_config.embedding_model,
-        embedding_dim=config.default_embedding_config.embedding_dim,
+        embedding_model=MemGPTConfig.default_embedding_config.embedding_model,
+        embedding_dim=MemGPTConfig.default_embedding_config.embedding_dim,
     )
     existing_source = ms.get_source(user_id=user.id, source_name=name)
     if not existing_source:
@@ -107,12 +105,12 @@ def store_docs(name, docs, user_id=None, show_progress=True):
             return False
 
     # compute and record passages
-    embed_model = embedding_model(config.default_embedding_config)
+    embed_model = embedding_model(MemGPTConfig.default_embedding_config)
 
     # use llama index to run embeddings code
     with suppress_stdout():
         service_context = ServiceContext.from_defaults(
-            llm=None, embed_model=embed_model, chunk_size=config.default_embedding_config.embedding_chunk_size
+            llm=None, embed_model=embed_model, chunk_size=MemGPTConfig.default_embedding_config.embedding_chunk_size
         )
     index = VectorStoreIndex.from_documents(docs, service_context=service_context, show_progress=True)
     embed_dict = index._vector_store._data.embedding_dict
@@ -127,8 +125,8 @@ def store_docs(name, docs, user_id=None, show_progress=True):
         node.embedding = vector
         text = node.text.replace("\x00", "\uFFFD")  # hacky fix for error on null characters
         assert (
-            len(node.embedding) == config.default_embedding_config.embedding_dim
-        ), f"Expected embedding dimension {config.default_embedding_config.embedding_dim}, got {len(node.embedding)}: {node.embedding}"
+            len(node.embedding) == MemGPTConfig.default_embedding_config.embedding_dim
+        ), f"Expected embedding dimension {MemGPTConfig.default_embedding_config.embedding_dim}, got {len(node.embedding)}: {node.embedding}"
         passages.append(
             Passage(
                 user_id=user.id,
@@ -136,12 +134,12 @@ def store_docs(name, docs, user_id=None, show_progress=True):
                 data_source=name,
                 embedding=node.embedding,
                 metadata=None,
-                embedding_dim=config.default_embedding_config.embedding_dim,
-                embedding_model=config.default_embedding_config.embedding_model,
+                embedding_dim=MemGPTConfig.default_embedding_config.embedding_dim,
+                embedding_model=MemGPTConfig.default_embedding_config.embedding_model,
             )
         )
 
-    insert_passages_into_source(passages, name, user_id, config)
+    insert_passages_into_source(passages, name, user_id)
 
 
 @app.command("index")
@@ -152,8 +150,7 @@ def load_index(
 ):
     """Load a LlamaIndex saved VectorIndex into MemGPT"""
     if user_id is None:
-        config = MemGPTConfig.load()
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
 
     try:
         # load index data
@@ -165,9 +162,8 @@ def load_index(
         node_dict = loaded_index._docstore.docs
 
         # create storage connector
-        config = MemGPTConfig.load()
         if user_id is None:
-            user_id = uuid.UUID(config.anon_clientid)
+            user_id = uuid.UUID(MemGPTConfig.anon_clientid)
 
         passages = []
         for node_id, node in node_dict.items():
@@ -178,18 +174,18 @@ def load_index(
                 Passage(
                     text=node.text,
                     embedding=np.array(vector),
-                    embedding_dim=config.default_embedding_config.embedding_dim,
-                    embedding_model=config.default_embedding_config.embedding_model,
+                    embedding_dim=MemGPTConfig.default_embedding_config.embedding_dim,
+                    embedding_model=MemGPTConfig.default_embedding_config.embedding_model,
                 )
             )
-            assert config.default_embedding_config.embedding_dim == len(
+            assert MemGPTConfig.default_embedding_config.embedding_dim == len(
                 vector
-            ), f"Expected embedding dimension {config.default_embedding_config.embedding_dim}, got {len(vector)}"
+            ), f"Expected embedding dimension {MemGPTConfig.default_embedding_config.embedding_dim}, got {len(vector)}"
 
         if len(passages) == 0:
             raise ValueError(f"No passages found in index {dir}")
 
-        insert_passages_into_source(passages, name, user_id, config)
+        insert_passages_into_source(passages, name, user_id)
     except ValueError as e:
         typer.secho(f"Failed to load index from provided information.\n{e}", fg=typer.colors.RED)
 
@@ -306,8 +302,7 @@ def load_vector_database(
 ):
     """Load pre-computed embeddings into MemGPT from a database."""
     if user_id is None:
-        config = MemGPTConfig.load()
-        user_id = uuid.UUID(config.anon_clientid)
+        user_id = uuid.UUID(MemGPTConfig.anon_clientid)
 
     try:
         from sqlalchemy import create_engine, select, MetaData, Table, Inspector
@@ -323,11 +318,9 @@ def load_vector_database(
 
         table = Table(table_name, metadata, autoload_with=engine)
 
-        config = MemGPTConfig.load()
-
         # Prepare a select statement
         select_statement = select(
-            table.c[text_column], table.c[embedding_column].cast(Vector(config.default_embedding_config.embedding_dim))
+            table.c[text_column], table.c[embedding_column].cast(Vector(MemGPTConfig.default_embedding_config.embedding_dim))
         )
 
         # Execute the query and fetch the results
@@ -343,20 +336,19 @@ def load_vector_database(
                     text=text,
                     embedding=embedding,
                     user_id=user_id,
-                    embedding_dim=config.default_embedding_config.embedding_dim,
-                    embedding_model=config.default_embedding_config.embedding_model,
+                    embedding_dim=MemGPTConfig.default_embedding_config.embedding_dim,
+                    embedding_model=MemGPTConfig.default_embedding_config.embedding_model,
                 )
             )
-            assert config.default_embedding_config.embedding_dim == len(
+            assert MemGPTConfig.default_embedding_config.embedding_dim == len(
                 embedding
-            ), f"Expected embedding dimension {config.default_embedding_config.embedding_dim}, got {len(embedding)}"
+            ), f"Expected embedding dimension {MemGPTConfig.default_embedding_config.embedding_dim}, got {len(embedding)}"
 
         # create storage connector
-        config = MemGPTConfig.load()
         if user_id is None:
-            user_id = uuid.UUID(config.anon_clientid)
+            user_id = uuid.UUID(MemGPTConfig.anon_clientid)
 
-        insert_passages_into_source(passages, name, user_id, config)
+        insert_passages_into_source(passages, name, user_id)
 
     except ValueError as e:
         typer.secho(f"Failed to load vector database from provided information.\n{e}", fg=typer.colors.RED)
