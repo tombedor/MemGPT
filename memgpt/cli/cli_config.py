@@ -117,11 +117,8 @@ def configure_llm_endpoint(config: MemGPTConfig, credentials: MemGPTCredentials)
             )
         else:
             credentials.azure_key = azure_creds["azure_key"]
-            credentials.azure_embedding_version = azure_creds["azure_embedding_version"]
-            credentials.azure_embedding_endpoint = azure_creds["azure_embedding_endpoint"]
-            if "azure_embedding_deployment" in azure_creds:
-                credentials.azure_embedding_deployment = azure_creds["azure_embedding_deployment"]
-            credentials.save()
+            credentials.azure_endpoint = azure_creds["azure_endpoint"]
+            credentials.azure_version = azure_creds["azure_version"]
 
         model_endpoint_type = "azure"
         model_endpoint = azure_creds["azure_endpoint"]
@@ -570,7 +567,10 @@ def configure_recall_storage(config: MemGPTConfig, credentials: MemGPTCredential
 
 @app.command()
 def configure():
-    """Updates default MemGPT configurations"""
+    """Updates default MemGPT configurations
+
+    This function and quickstart should be the ONLY place where MemGPTConfig.save() is called
+    """
 
     # check credentials
     credentials = MemGPTCredentials.load()
