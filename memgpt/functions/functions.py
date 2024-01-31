@@ -22,6 +22,11 @@ def load_function_set(module):
 
         # Check if it's a callable function and not a built-in or special method
         if inspect.isfunction(attr) and attr.__module__ == module.__name__:
+            if attr_name.startswith("_"):
+                # Skip private functions
+                printd(f"Skipping {attr_name} because it starts with _, private function")
+                continue
+
             if attr_name in function_dict:
                 raise ValueError(f"Found a duplicate of function name '{attr_name}'")
 
