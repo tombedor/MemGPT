@@ -1,6 +1,6 @@
 import os
 import base64
-from sqlalchemy import create_engine, Column, String, BIGINT, select, text, JSON, BINARY, DateTime
+from sqlalchemy import NullPool, create_engine, Column, String, BIGINT, select, text, JSON, BINARY, DateTime
 from sqlalchemy import func, or_, and_
 from sqlalchemy import desc, asc
 from sqlalchemy.orm import sessionmaker, mapped_column, declarative_base
@@ -435,7 +435,7 @@ class PostgresStorageConnector(SQLStorageConnector):
             raise ValueError(f"Table type {table_type} not implemented")
         # create table
         self.db_model = get_db_model(self.table_name, table_type, user_id, agent_id)
-        self.engine = create_engine(self.uri)
+        self.engine = create_engine(self.uri, poolclass=NullPool)
         for c in self.db_model.__table__.columns:
             if c.name == "embedding":
                 assert isinstance(c.type, Vector), f"Embedding column must be of type Vector, got {c.type}"
@@ -477,7 +477,7 @@ class SQLLiteStorageConnector(SQLStorageConnector):
 
         # Create the SQLAlchemy engine
         self.db_model = get_db_model(self.table_name, table_type, user_id, agent_id, dialect="sqlite")
-        self.engine = create_engine(f"sqlite:///{self.path}")
+        self.engine = create_engine(f"sqlite:///{self.path}", poolclass=NullPool)
         Base.metadata.create_all(self.engine, tables=[self.db_model.__table__])  # Create the table if it doesn't exist
         self.session_maker = sessionmaker(bind=self.engine)
 

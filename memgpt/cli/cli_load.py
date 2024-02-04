@@ -9,6 +9,7 @@ memgpt load <data-connector-type> --name <dataset-name> [ADDITIONAL ARGS]
 """
 
 from typing import List, Optional, Annotated
+from sqlalchemy import NullPool
 from tqdm import tqdm
 import numpy as np
 import typer
@@ -263,7 +264,7 @@ def load_database(
             # read from database dump file
             from sqlalchemy import create_engine
 
-            engine = create_engine(f"sqlite:///{dump_path}")
+            engine = create_engine(f"sqlite:///{dump_path}", poolclass=NullPool)
 
             db = DatabaseReader(engine=engine)
         else:
@@ -309,7 +310,7 @@ def load_vector_database(
         from pgvector.sqlalchemy import Vector
 
         # connect to db table
-        engine = create_engine(uri)
+        engine = create_engine(uri, poolclass=NullPool)
         metadata = MetaData()
         # Create an inspector to inspect the database
         inspector = Inspector.from_engine(engine)

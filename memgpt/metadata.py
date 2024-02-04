@@ -6,7 +6,7 @@ from memgpt.utils import enforce_types
 from memgpt.data_types import AgentState, Source, User, LLMConfig, EmbeddingConfig
 from memgpt.agent import Agent
 
-from sqlalchemy import create_engine, Column, String, BIGINT, JSON, Boolean
+from sqlalchemy import NullPool, create_engine, Column, String, BIGINT, JSON, Boolean
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.sql import func
@@ -210,7 +210,7 @@ class MetadataStore:
             raise ValueError("Database URI is not provided or is invalid.")
 
         # Check if tables need to be created
-        self.engine = create_engine(self.uri)
+        self.engine = create_engine(self.uri, poolclass=NullPool)
         Base.metadata.create_all(
             self.engine, tables=[UserModel.__table__, AgentModel.__table__, SourceModel.__table__, AgentSourceMappingModel.__table__]
         )
