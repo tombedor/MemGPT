@@ -1,4 +1,6 @@
 import uuid
+import os
+from uuid import UUID
 from typing import Dict, List, Union, Optional, Tuple
 from memgpt.config import MemGPTConfig
 
@@ -66,19 +68,23 @@ class Client(object):
         agent_state = self.server.create_agent(user_id=self.user_id, agent_config=agent_config)
         return agent_state
 
-    def get_agent_config(self, agent_id: str) -> Dict:
+    def create_preset(self, preset: Preset):
+        preset = self.server.create_preset(preset=preset)
+        return preset
+
+    def get_agent_config(self, agent_id: UUID) -> Dict:
         self.interface.clear()
         return self.server.get_agent_config(user_id=self.user_id, agent_id=agent_id)
 
-    def get_agent_memory(self, agent_id: str) -> Dict:
+    def get_agent_memory(self, agent_id: UUID) -> Dict:
         self.interface.clear()
         return self.server.get_agent_memory(user_id=self.user_id, agent_id=agent_id)
 
-    def update_agent_core_memory(self, agent_id: str, new_memory_contents: Dict) -> Dict:
+    def update_agent_core_memory(self, agent_id: UUID, new_memory_contents: Dict) -> Dict:
         self.interface.clear()
         return self.server.update_agent_core_memory(user_id=self.user_id, agent_id=agent_id, new_memory_contents=new_memory_contents)
 
-    def user_message(self, agent_id: str, message: str, return_token_count: bool = False) -> Union[List[Dict], Tuple[List[Dict], int]]:
+    def user_message(self, agent_id: UUID, message: str, return_token_count: bool = False) -> Union[List[Dict], Tuple[List[Dict], int]]:
         self.interface.clear()
         tokens_accumulated = self.server.user_message(user_id=self.user_id, agent_id=agent_id, message=message)
         if self.auto_save:
@@ -88,7 +94,7 @@ class Client(object):
         else:
             return self.interface.to_list()
 
-    def run_command(self, agent_id: str, command: str) -> Union[str, None]:
+    def run_command(self, agent_id: UUID, command: str) -> Union[str, None]:
         self.interface.clear()
         return self.server.run_command(user_id=self.user_id, agent_id=agent_id, command=command)
 
