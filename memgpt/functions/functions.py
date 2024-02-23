@@ -6,6 +6,7 @@ import sys
 
 from memgpt.functions.schema_generator import generate_schema
 from memgpt.constants import MEMGPT_DIR, CLI_WARNING_PREFIX
+from memgpt.utils import printd
 
 USER_FUNCTIONS_DIR = os.path.join(MEMGPT_DIR, "functions")
 

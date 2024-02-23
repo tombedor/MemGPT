@@ -68,10 +68,6 @@ class Client(object):
         agent_state = self.server.create_agent(user_id=self.user_id, agent_config=agent_config)
         return agent_state
 
-    def create_preset(self, preset: Preset):
-        preset = self.server.create_preset(preset=preset)
-        return preset
-
     def get_agent_config(self, agent_id: UUID) -> Dict:
         self.interface.clear()
         return self.server.get_agent_config(user_id=self.user_id, agent_id=agent_id)
