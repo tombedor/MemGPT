@@ -1,20 +1,13 @@
 import uuid
 import time
-import os
 import threading
 
 from memgpt import Admin, create_client
-from memgpt.config import MemGPTConfig
-from memgpt import constants
-from memgpt.data_types import LLMConfig, EmbeddingConfig, Preset
-from memgpt.functions.functions import load_all_function_sets
-from memgpt.prompts import gpt_system
 from memgpt.constants import DEFAULT_PRESET
 
 import pytest
 
 
-from .utils import wipe_config
 import uuid
 
 
@@ -56,7 +49,9 @@ def user_token():
     # Setup: Create a user via the client before the tests
 
     admin = Admin(test_base_url, test_server_token)
-    user_id, token = admin.create_user(test_user_id)  # Adjust as per your client's method
+    user_id, token = admin.create_user(
+        test_user_id
+    )  # Adjust as per your client's method
     print(user_id, token)
 
     yield token
@@ -66,7 +61,9 @@ def user_token():
 
 
 # Fixture to create clients with different configurations
-@pytest.fixture(params=[{"base_url": test_base_url}, {"base_url": None}], scope="module")
+@pytest.fixture(
+    params=[{"base_url": test_base_url}, {"base_url": None}], scope="module"
+)
 def client(request, user_token):
     # use token or not
     if request.param["base_url"]:
@@ -74,7 +71,9 @@ def client(request, user_token):
     else:
         token = None
 
-    client = create_client(**request.param, token=token)  # This yields control back to the test function
+    client = create_client(
+        **request.param, token=token
+    )  # This yields control back to the test function
     yield client
 
 
@@ -99,15 +98,21 @@ def test_create_agent(client):
         name=test_agent_name,
         preset=test_preset_name,
     )
-    print(f"\n\n[1] CREATED AGENT {test_agent_state.id}!!!\n\tmessages={test_agent_state.state['messages']}")
+    print(
+        f"\n\n[1] CREATED AGENT {test_agent_state.id}!!!\n\tmessages={test_agent_state.state['messages']}"
+    )
     assert test_agent_state is not None
 
 
 def test_user_message(client):
     """Test that we can send a message through the client"""
     assert client is not None, "Run create_agent test first"
-    print(f"\n\n[2] SENDING MESSAGE TO AGENT {test_agent_state.id}!!!\n\tmessages={test_agent_state.state['messages']}")
-    response = client.user_message(agent_id=test_agent_state.id, message="Hello my name is Test, Client Test")
+    print(
+        f"\n\n[2] SENDING MESSAGE TO AGENT {test_agent_state.id}!!!\n\tmessages={test_agent_state.state['messages']}"
+    )
+    response = client.user_message(
+        agent_id=test_agent_state.id, message="Hello my name is Test, Client Test"
+    )
     assert response is not None and len(response) > 0
 
     # global test_agent_state_post_message
@@ -116,9 +121,3 @@ def test_user_message(client):
     # print(
     #    f"[2] MESSAGE SEND SUCCESS!!! AGENT {test_agent_state_post_message.id}\n\tmessages={test_agent_state_post_message.state['messages']}"
     # )
-
-
-if __name__ == "__main__":
-    # test_create_preset()
-    test_create_agent()
-    test_user_message()

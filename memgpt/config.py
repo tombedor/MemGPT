@@ -5,17 +5,12 @@ import os
 import uuid
 from dataclasses import dataclass, field
 import configparser
-import typer
-import questionary
-from typing import Optional
 
 import memgpt
 import memgpt.utils as utils
-from memgpt.utils import printd, get_schema_diff
-from memgpt.functions.functions import load_all_function_sets
 
-from memgpt.constants import MEMGPT_DIR, LLM_MAX_TOKENS, DEFAULT_HUMAN, DEFAULT_PERSONA, DEFAULT_PRESET
-from memgpt.data_types import AgentState, User, LLMConfig, EmbeddingConfig
+from memgpt.constants import MEMGPT_DIR, DEFAULT_HUMAN, DEFAULT_PERSONA, DEFAULT_PRESET
+from memgpt.data_types import AgentState, LLMConfig, EmbeddingConfig
 
 
 # helper functions for writing to configs
@@ -38,7 +33,9 @@ def set_field(config, section, field, value):
 
 @dataclass
 class MemGPTConfig:
-    config_path: str = os.getenv("MEMGPT_CONFIG_PATH") if os.getenv("MEMGPT_CONFIG_PATH") else os.path.join(MEMGPT_DIR, "config")
+    config_path: str = os.getenv("MEMGPT_CONFIG_PATH") or os.path.join(
+        MEMGPT_DIR, "config"
+    )
     anon_clientid: str = None
 
     # preset
@@ -124,28 +121,46 @@ class MemGPTConfig:
                 # Extract relevant LLM configuration from the config file
                 "model": get_field(config, "model", "model"),
                 "model_endpoint": get_field(config, "model", "model_endpoint"),
-                "model_endpoint_type": get_field(config, "model", "model_endpoint_type"),
+                "model_endpoint_type": get_field(
+                    config, "model", "model_endpoint_type"
+                ),
                 "model_wrapper": get_field(config, "model", "model_wrapper"),
                 "context_window": get_field(config, "model", "context_window"),
             }
             embedding_config_dict = {
                 # Extract relevant Embedding configuration from the config file
-                "embedding_endpoint": get_field(config, "embedding", "embedding_endpoint"),
+                "embedding_endpoint": get_field(
+                    config, "embedding", "embedding_endpoint"
+                ),
                 "embedding_model": get_field(config, "embedding", "embedding_model"),
-                "embedding_endpoint_type": get_field(config, "embedding", "embedding_endpoint_type"),
+                "embedding_endpoint_type": get_field(
+                    config, "embedding", "embedding_endpoint_type"
+                ),
                 "embedding_dim": get_field(config, "embedding", "embedding_dim"),
-                "embedding_chunk_size": get_field(config, "embedding", "embedding_chunk_size"),
+                "embedding_chunk_size": get_field(
+                    config, "embedding", "embedding_chunk_size"
+                ),
             }
             # Remove null values
-            llm_config_dict = {k: v for k, v in llm_config_dict.items() if v is not None}
-            embedding_config_dict = {k: v for k, v in embedding_config_dict.items() if v is not None}
+            llm_config_dict = {
+                k: v for k, v in llm_config_dict.items() if v is not None
+            }
+            embedding_config_dict = {
+                k: v for k, v in embedding_config_dict.items() if v is not None
+            }
             # Correct the types that aren't strings
             if llm_config_dict["context_window"] is not None:
-                llm_config_dict["context_window"] = int(llm_config_dict["context_window"])
+                llm_config_dict["context_window"] = int(
+                    llm_config_dict["context_window"]
+                )
             if embedding_config_dict["embedding_dim"] is not None:
-                embedding_config_dict["embedding_dim"] = int(embedding_config_dict["embedding_dim"])
+                embedding_config_dict["embedding_dim"] = int(
+                    embedding_config_dict["embedding_dim"]
+                )
             if embedding_config_dict["embedding_chunk_size"] is not None:
-                embedding_config_dict["embedding_chunk_size"] = int(embedding_config_dict["embedding_chunk_size"])
+                embedding_config_dict["embedding_chunk_size"] = int(
+                    embedding_config_dict["embedding_chunk_size"]
+                )
             # Construct the inner properties
             llm_config = LLMConfig(**llm_config_dict)
             embedding_config = EmbeddingConfig(**embedding_config_dict)
@@ -200,17 +215,56 @@ class MemGPTConfig:
 
         # model defaults
         set_field(config, "model", "model", self.default_llm_config.model)
-        set_field(config, "model", "model_endpoint", self.default_llm_config.model_endpoint)
-        set_field(config, "model", "model_endpoint_type", self.default_llm_config.model_endpoint_type)
-        set_field(config, "model", "model_wrapper", self.default_llm_config.model_wrapper)
-        set_field(config, "model", "context_window", str(self.default_llm_config.context_window))
+        set_field(
+            config, "model", "model_endpoint", self.default_llm_config.model_endpoint
+        )
+        set_field(
+            config,
+            "model",
+            "model_endpoint_type",
+            self.default_llm_config.model_endpoint_type,
+        )
+        set_field(
+            config, "model", "model_wrapper", self.default_llm_config.model_wrapper
+        )
+        set_field(
+            config,
+            "model",
+            "context_window",
+            str(self.default_llm_config.context_window),
+        )
 
         # embeddings
-        set_field(config, "embedding", "embedding_endpoint_type", self.default_embedding_config.embedding_endpoint_type)
-        set_field(config, "embedding", "embedding_endpoint", self.default_embedding_config.embedding_endpoint)
-        set_field(config, "embedding", "embedding_model", self.default_embedding_config.embedding_model)
-        set_field(config, "embedding", "embedding_dim", str(self.default_embedding_config.embedding_dim))
-        set_field(config, "embedding", "embedding_chunk_size", str(self.default_embedding_config.embedding_chunk_size))
+        set_field(
+            config,
+            "embedding",
+            "embedding_endpoint_type",
+            self.default_embedding_config.embedding_endpoint_type,
+        )
+        set_field(
+            config,
+            "embedding",
+            "embedding_endpoint",
+            self.default_embedding_config.embedding_endpoint,
+        )
+        set_field(
+            config,
+            "embedding",
+            "embedding_model",
+            self.default_embedding_config.embedding_model,
+        )
+        set_field(
+            config,
+            "embedding",
+            "embedding_dim",
+            str(self.default_embedding_config.embedding_dim),
+        )
+        set_field(
+            config,
+            "embedding",
+            "embedding_chunk_size",
+            str(self.default_embedding_config.embedding_chunk_size),
+        )
 
         # archival storage
         set_field(config, "archival_storage", "type", self.archival_storage_type)
@@ -250,7 +304,9 @@ class MemGPTConfig:
         else:
             config_path = MemGPTConfig.config_path
 
-        assert not os.path.isdir(config_path), f"Config path {config_path} cannot be set to a directory."
+        assert not os.path.isdir(
+            config_path
+        ), f"Config path {config_path} cannot be set to a directory."
         return os.path.exists(config_path)
 
     @staticmethod
@@ -258,7 +314,16 @@ class MemGPTConfig:
         if not os.path.exists(MEMGPT_DIR):
             os.makedirs(MEMGPT_DIR, exist_ok=True)
 
-        folders = ["personas", "humans", "archival", "agents", "functions", "system_prompts", "presets", "settings"]
+        folders = [
+            "personas",
+            "humans",
+            "archival",
+            "agents",
+            "functions",
+            "system_prompts",
+            "presets",
+            "settings",
+        ]
 
         for folder in folders:
             if not os.path.exists(os.path.join(MEMGPT_DIR, folder)):
@@ -309,11 +374,27 @@ class AgentConfig:
         self.persona = config.persona if persona is None else persona
         self.human = config.human if human is None else human
         self.preset = config.preset if preset is None else preset
-        self.context_window = config.default_llm_config.context_window if context_window is None else context_window
+        self.context_window = (
+            config.default_llm_config.context_window
+            if context_window is None
+            else context_window
+        )
         self.model = config.default_llm_config.model if model is None else model
-        self.model_endpoint_type = config.default_llm_config.model_endpoint_type if model_endpoint_type is None else model_endpoint_type
-        self.model_endpoint = config.default_llm_config.model_endpoint if model_endpoint is None else model_endpoint
-        self.model_wrapper = config.default_llm_config.model_wrapper if model_wrapper is None else model_wrapper
+        self.model_endpoint_type = (
+            config.default_llm_config.model_endpoint_type
+            if model_endpoint_type is None
+            else model_endpoint_type
+        )
+        self.model_endpoint = (
+            config.default_llm_config.model_endpoint
+            if model_endpoint is None
+            else model_endpoint
+        )
+        self.model_wrapper = (
+            config.default_llm_config.model_wrapper
+            if model_wrapper is None
+            else model_wrapper
+        )
         self.llm_config = LLMConfig(
             model=self.model,
             model_endpoint_type=self.model_endpoint_type,
@@ -322,13 +403,29 @@ class AgentConfig:
             context_window=self.context_window,
         )
         self.embedding_endpoint_type = (
-            config.default_embedding_config.embedding_endpoint_type if embedding_endpoint_type is None else embedding_endpoint_type
+            config.default_embedding_config.embedding_endpoint_type
+            if embedding_endpoint_type is None
+            else embedding_endpoint_type
         )
-        self.embedding_endpoint = config.default_embedding_config.embedding_endpoint if embedding_endpoint is None else embedding_endpoint
-        self.embedding_model = config.default_embedding_config.embedding_model if embedding_model is None else embedding_model
-        self.embedding_dim = config.default_embedding_config.embedding_dim if embedding_dim is None else embedding_dim
+        self.embedding_endpoint = (
+            config.default_embedding_config.embedding_endpoint
+            if embedding_endpoint is None
+            else embedding_endpoint
+        )
+        self.embedding_model = (
+            config.default_embedding_config.embedding_model
+            if embedding_model is None
+            else embedding_model
+        )
+        self.embedding_dim = (
+            config.default_embedding_config.embedding_dim
+            if embedding_dim is None
+            else embedding_dim
+        )
         self.embedding_chunk_size = (
-            config.default_embedding_config.embedding_chunk_size if embedding_chunk_size is None else embedding_chunk_size
+            config.default_embedding_config.embedding_chunk_size
+            if embedding_chunk_size is None
+            else embedding_chunk_size
         )
         self.embedding_config = EmbeddingConfig(
             embedding_endpoint_type=self.embedding_endpoint_type,
@@ -340,7 +437,9 @@ class AgentConfig:
 
         # agent metadata
         self.data_sources = data_sources if data_sources is not None else []
-        self.create_time = create_time if create_time is not None else utils.get_local_time()
+        self.create_time = (
+            create_time if create_time is not None else utils.get_local_time()
+        )
         if memgpt_version is None:
             import memgpt
 
@@ -353,7 +452,9 @@ class AgentConfig:
 
         # save agent config
         self.agent_config_path = (
-            os.path.join(MEMGPT_DIR, "agents", self.name, "config.json") if agent_config_path is None else agent_config_path
+            os.path.join(MEMGPT_DIR, "agents", self.name, "config.json")
+            if agent_config_path is None
+            else agent_config_path
         )
 
     def generate_agent_id(self, length=6):
@@ -415,7 +516,9 @@ class AgentConfig:
     def load(cls, name: str):
         """Load agent config from JSON file"""
         agent_config_path = os.path.join(MEMGPT_DIR, "agents", name, "config.json")
-        assert os.path.exists(agent_config_path), f"Agent config file does not exist at {agent_config_path}"
+        assert os.path.exists(
+            agent_config_path
+        ), f"Agent config file does not exist at {agent_config_path}"
         with open(agent_config_path, "r", encoding="utf-8") as f:
             agent_config = json.load(f)
         # allow compatibility accross versions

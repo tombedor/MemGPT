@@ -2,9 +2,9 @@ import os
 import uuid
 
 from memgpt import create_client
-from memgpt.config import MemGPTConfig
 from memgpt import constants
 import memgpt.functions.function_sets.base as base_functions
+from tests import TEST_MEMGPT_CONFIG
 from .utils import wipe_config, create_config
 
 
@@ -30,9 +30,10 @@ def create_test_agent():
     )
 
     global agent_obj
-    config = MemGPTConfig.load()
-    user_id = uuid.UUID(config.anon_clientid)
-    agent_obj = client.server._get_or_load_agent(user_id=user_id, agent_id=agent_state.id)
+    user_id = uuid.UUID(TEST_MEMGPT_CONFIG.anon_clientid)
+    agent_obj = client.server._get_or_load_agent(
+        user_id=user_id, agent_id=agent_state.id
+    )
 
 
 def test_archival():
@@ -55,4 +56,6 @@ def test_recall():
     base_functions.conversation_search(agent_obj, "banana")
     base_functions.conversation_search(agent_obj, "banana", page=0)
 
-    base_functions.conversation_search_date(agent_obj, start_date="2022-01-01", end_date="2022-01-02")
+    base_functions.conversation_search_date(
+        agent_obj, start_date="2022-01-01", end_date="2022-01-02"
+    )

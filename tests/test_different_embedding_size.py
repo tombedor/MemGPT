@@ -2,11 +2,10 @@ import uuid
 import os
 
 from memgpt import create_client
-from memgpt.config import MemGPTConfig
-from memgpt import constants
-from memgpt.data_types import LLMConfig, EmbeddingConfig, AgentState, Passage
+from memgpt.data_types import EmbeddingConfig, Passage
 from memgpt.embeddings import embedding_model
 from memgpt.agent_store.storage import StorageConnector, TableType
+from tests import TEST_MEMGPT_CONFIG
 from .utils import wipe_config, create_config
 import uuid
 
@@ -21,7 +20,11 @@ test_user_id = uuid.uuid4()
 
 def generate_passages(user, agent):
     # Note: the database will filter out rows that do not correspond to agent1 and test_user by default.
-    texts = ["This is a test passage", "This is another test passage", "Cinderella wept"]
+    texts = [
+        "This is a test passage",
+        "This is another test passage",
+        "Cinderella wept",
+    ]
     embed_model = embedding_model(agent.embedding_config)
     orig_embeddings = []
     passages = []
@@ -62,7 +65,9 @@ def test_create_user():
 
     # openai: add passages
     passages, openai_embeddings = generate_passages(client.user, openai_agent)
-    openai_agent_run = client.server._get_or_load_agent(user_id=client.user.id, agent_id=openai_agent.id)
+    openai_agent_run = client.server._get_or_load_agent(
+        user_id=client.user.id, agent_id=openai_agent.id
+    )
     openai_agent_run.persistence_manager.archival_memory.storage.insert_many(passages)
 
     # hosted: create agent
@@ -82,12 +87,15 @@ def test_create_user():
 
     # hosted: add passages
     passages, hosted_embeddings = generate_passages(client.user, hosted_agent)
-    hosted_agent_run = client.server._get_or_load_agent(user_id=client.user.id, agent_id=hosted_agent.id)
+    hosted_agent_run = client.server._get_or_load_agent(
+        user_id=client.user.id, agent_id=hosted_agent.id
+    )
     hosted_agent_run.persistence_manager.archival_memory.storage.insert_many(passages)
 
     # test passage dimentionality
-    config = MemGPTConfig.load()
-    storage = StorageConnector.get_storage_connector(TableType.PASSAGES, config, client.user.id)
+    storage = StorageConnector.get_storage_connector(
+        TableType.PASSAGES, TEST_MEMGPT_CONFIG, client.user.id
+    )
     storage.filters = {}  # clear filters to be able to get all passages
     passages = storage.get_all()
     for passage in passages:
@@ -98,7 +106,9 @@ def test_create_user():
 
             # ensure was in original embeddings
             embedding = passage.embedding[: passage.embedding_dim]
-            assert embedding in hosted_embeddings, f"embedding={embedding} not in hosted_embeddings={hosted_embeddings}"
+            assert (
+                embedding in hosted_embeddings
+            ), f"embedding={embedding} not in hosted_embeddings={hosted_embeddings}"
 
             # make sure all zeros
             assert not any(
@@ -111,7 +121,9 @@ def test_create_user():
 
             # ensure was in original embeddings
             embedding = passage.embedding[: passage.embedding_dim]
-            assert embedding in openai_embeddings, f"embedding={embedding} not in openai_embeddings={openai_embeddings}"
+            assert (
+                embedding in openai_embeddings
+            ), f"embedding={embedding} not in openai_embeddings={openai_embeddings}"
 
             # make sure all zeros
             assert not any(
