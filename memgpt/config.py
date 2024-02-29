@@ -34,7 +34,7 @@ def set_field(config, section, field, value):
 @dataclass
 class MemGPTConfig:
     config_path: str = os.getenv("MEMGPT_CONFIG_PATH") or os.path.join(MEMGPT_DIR, "config")
-    anon_clientid: str = None
+    anon_clientid: str = str(uuid.UUID(int=0))
 
     # preset
     preset: str = DEFAULT_PRESET
