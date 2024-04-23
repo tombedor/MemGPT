@@ -46,17 +46,17 @@ class MemGPTConfig:
     default_embedding_config: EmbeddingConfig = field(default_factory=EmbeddingConfig)
 
     # database configs: recall
-    recall_storage_type: str = "sqlite"  # local, db
-    recall_storage_path: str = os.environ.get("SQLITE_PATH", "")
+    recall_storage_type: str = ""  # local, db
+    recall_storage_path: str = ""
     recall_storage_uri: str = ""
 
     # database configs: metadata storage (sources, agents, data sources)
-    metadata_storage_type: str = "sqlite"
-    metadata_storage_path: str = os.environ.get("SQLITE_PATH", "")
+    metadata_storage_type: str = ""
+    metadata_storage_path: str = ""
     metadata_storage_uri: str = ""
 
-    archival_storage_type: str = "sqlite"
-    archival_storage_path: str = os.environ.get("SQLITE_PATH", "")
+    archival_storage_type: str = ""
+    archival_storage_path: str = ""
     archival_storage_uri: str = ""
 
     # database configs: agent state

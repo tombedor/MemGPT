@@ -32,22 +32,13 @@ class CommonUUID(TypeDecorator):
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(UUID(as_uuid=True))
-        else:
-            return dialect.type_descriptor(CHAR())
+        return dialect.type_descriptor(UUID(as_uuid=True))
 
     def process_bind_param(self, value, dialect):
-        if dialect.name == "postgresql" or value is None:
-            return value
-        else:
-            return str(value)  # Convert UUID to string for SQLite
+        return value
 
     def process_result_value(self, value, dialect):
-        if dialect.name == "postgresql" or value is None:
-            return value
-        else:
-            return uuid.UUID(value)
+        return value
 
 
 class LLMConfigColumn(TypeDecorator):
@@ -296,9 +287,6 @@ class MetadataStore:
         # TODO: get DB URI or path
         if config.metadata_storage_type == "postgres":
             self.uri = config.metadata_storage_uri
-        elif config.metadata_storage_type == "sqlite":
-            path = os.path.join(config.metadata_storage_path, "sqlite.db")
-            self.uri = f"sqlite:///{path}"
         else:
             raise ValueError(f"Invalid metadata storage type: {config.metadata_storage_type}")
 
