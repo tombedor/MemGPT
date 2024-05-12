@@ -1,31 +1,25 @@
 import uuid
 import inspect
-import json
 import traceback
-from typing import List, Tuple, Optional, cast, Union
+from typing import List, Tuple, cast, Union
 
 from memgpt.metadata import MetadataStore
 from memgpt.data_types import AgentState, Message, LLMConfig, EmbeddingConfig, Preset
 from memgpt.models import chat_completion_response
 from memgpt.interface import AgentInterface
-from memgpt.persistence_manager import LocalStateManager
+from memgpt.persistence_manager import PersistenceManager
 from memgpt.system import get_login_event, package_function_response, package_summarize_message, get_initial_boot_messages
-from memgpt.memory import CoreMemory as InContextMemory, summarize_messages, ArchivalMemory, RecallMemory
+from memgpt.memory import InContextMemory, summarize_messages
 from memgpt.llm_api_tools import create, is_context_overflow_error
 from memgpt.utils import (
-    create_random_username,
     get_tool_call_id,
-    get_local_time,
     parse_json,
-    united_diff,
     printd,
     count_tokens,
     validate_function_response,
-    verify_first_message_correctness,
 )
 from memgpt.constants import (
-    FIRST_MESSAGE_ATTEMPTS,
-    JSON_LOADS_STRICT,
+    DEFAULT_PERSONA,
     MESSAGE_SUMMARY_WARNING_FRAC,
     MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC,
     MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST,
@@ -33,44 +27,37 @@ from memgpt.constants import (
     CORE_MEMORY_PERSONA_CHAR_LIMIT,
     LLM_MAX_TOKENS,
     CLI_WARNING_PREFIX,
-    JSON_ENSURE_ASCII,
+    SYSTEM,
 )
 from .errors import LLMError
 from .functions.functions import load_all_function_sets
 
 
-def initialize_memory(ai_notes: Union[str, None], human_notes: Union[str, None]):
-    if ai_notes is None:
-        raise ValueError(ai_notes)
-    if human_notes is None:
-        raise ValueError(human_notes)
+def initialize_memory(ai_notes: str, human_notes: str):
+    assert ai_notes
+    assert human_notes
     memory = InContextMemory(human_char_limit=CORE_MEMORY_HUMAN_CHAR_LIMIT, persona_char_limit=CORE_MEMORY_PERSONA_CHAR_LIMIT)
     memory.edit_persona(ai_notes)
     memory.edit_human(human_notes)
     return memory
 
 
+# TODO (tbedor) this should be generated dynamically
 def construct_system_with_memory(
-    system: str,
     memory: InContextMemory,
-    memory_edit_timestamp: str,
-    archival_memory: ArchivalMemory = None,
-    recall_memory: RecallMemory = None,
-    include_char_count: bool = True,
 ):
+
+    human = memory.human
+    assert type(human) == str
     full_system_message = "\n".join(
         [
-            system,
+            SYSTEM,
             "\n",
-            f"### Memory [last modified: {memory_edit_timestamp.strip()}]",
-            f"{len(recall_memory) if recall_memory else 0} previous messages between you and the user are stored in recall memory (use functions to access them)",
-            f"{len(archival_memory) if archival_memory else 0} total memories you created are stored in archival memory (use functions to access them)",
-            "\nCore memory shown below (limited in size, additional information stored in archival / recall memory):",
-            f'<persona characters="{len(memory.persona)}/{memory.persona_char_limit}">' if include_char_count else "<persona>",
-            memory.persona,
+            "<persona>",
+            DEFAULT_PERSONA,
             "</persona>",
-            f'<human characters="{len(memory.human)}/{memory.human_char_limit}">' if include_char_count else "<human>",
-            memory.human,
+            "<human>",
+            human,
             "</human>",
         ]
     )
@@ -78,96 +65,70 @@ def construct_system_with_memory(
 
 
 def initialize_message_sequence(
-    model: str,
-    system: str,
     memory: InContextMemory,
-    archival_memory: ArchivalMemory = None,
-    recall_memory: RecallMemory = None,
-    memory_edit_timestamp: str = None,
-    include_initial_boot_message: bool = True,
 ):
-    if memory_edit_timestamp is None:
-        memory_edit_timestamp = get_local_time()
 
-    full_system_message = construct_system_with_memory(
-        system, memory, memory_edit_timestamp, archival_memory=archival_memory, recall_memory=recall_memory
-    )
+    full_system_message = construct_system_with_memory(memory)
     first_user_message = get_login_event()  # event letting MemGPT know the user just logged in
 
-    if include_initial_boot_message:
-        if model is not None and "gpt-3.5" in model:
-            initial_boot_messages = get_initial_boot_messages("startup_with_send_message_gpt35")
-        else:
-            initial_boot_messages = get_initial_boot_messages("startup_with_send_message")
-        messages = (
-            [
-                {"role": "system", "content": full_system_message},
-            ]
-            + initial_boot_messages
-            + [
-                {"role": "user", "content": first_user_message},
-            ]
-        )
-
-    else:
-        messages = [
+    initial_boot_messages = get_initial_boot_messages()
+    messages = (
+        [
             {"role": "system", "content": full_system_message},
+        ]
+        + initial_boot_messages
+        + [
             {"role": "user", "content": first_user_message},
         ]
+    )
 
     return messages
 
 
 class Agent(object):
+    @classmethod
+    def initialize_with_configs(
+        cls,
+        interface: AgentInterface,
+        preset: Preset,
+        created_by: uuid.UUID,
+        name: str,
+        llm_config: LLMConfig,
+        embedding_config: EmbeddingConfig,
+    ):
+
+        assert created_by is not None, "Must provide created_by field when creating an Agent from a Preset"
+        assert llm_config is not None, "Must provide llm_config field when creating an Agent from a Preset"
+        assert embedding_config is not None, "Must provide embedding_config field when creating an Agent from a Preset"
+        assert name is not None, "must proide agent name"
+
+        # if agent_state is also provided, override any preset values
+        init_agent_state = AgentState(
+            name=name,
+            user_id=created_by,
+            human=preset.human,
+            llm_config=llm_config,
+            embedding_config=embedding_config,
+            state={
+                "persona": DEFAULT_PERSONA,
+                "human": preset.human,
+                "system": SYSTEM,
+                "messages": None,
+            },
+        )
+        return cls(interface=interface, agent_state=init_agent_state)
+
     def __init__(
         self,
         interface: AgentInterface,
-        # agents can be created from providing agent_state
-        agent_state: Optional[AgentState] = None,
-        # or from providing a preset (requires preset + extra fields)
-        preset: Optional[Preset] = None,
-        created_by: Optional[uuid.UUID] = None,
-        name: Optional[str] = None,
-        llm_config: Optional[LLMConfig] = None,
-        embedding_config: Optional[EmbeddingConfig] = None,
-        # extras
-        messages_total: Optional[int] = None,  # TODO remove?
-        first_message_verify_mono: bool = True,  # TODO move to config?
+        agent_state: AgentState,
     ):
-        # An agent can be created from a Preset object
-        if preset is not None:
-            assert agent_state is None, "Can create an agent from a Preset or AgentState (but both were provided)"
-            assert created_by is not None, "Must provide created_by field when creating an Agent from a Preset"
-            assert llm_config is not None, "Must provide llm_config field when creating an Agent from a Preset"
-            assert embedding_config is not None, "Must provide embedding_config field when creating an Agent from a Preset"
-
-            # if agent_state is also provided, override any preset values
-            init_agent_state = AgentState(
-                name=name if name else create_random_username(),
-                user_id=created_by,
-                persona=preset.persona,
-                human=preset.human,
-                llm_config=llm_config,
-                embedding_config=embedding_config,
-                preset=preset.name,
-                state={
-                    "persona": preset.persona,
-                    "human": preset.human,
-                    "system": preset.system,
-                    "messages": None,
-                },
-            )
 
         # An agent can also be created directly from AgentState
-        elif agent_state is not None:
-            assert preset is None, "Can create an agent from a Preset or AgentState (but both were provided)"
-            assert agent_state.state is not None and agent_state.state != {}, "AgentState.state cannot be empty"
+        assert agent_state.state is not None and agent_state.state != {}, "AgentState.state cannot be empty"
 
-            # Assume the agent_state passed in is formatted correctly
-            init_agent_state = agent_state
-
-        else:
-            raise ValueError("Both Preset and AgentState were null (must provide one or the other)")
+        # Assume the agent_state passed in is formatted correctly
+        init_agent_state = agent_state
 
         # Hold a copy of the state that was used to init the agent
         self.agent_state = init_agent_state
@@ -175,28 +136,18 @@ class Agent(object):
         # gpt-4, gpt-3.5-turbo, ...
         self.model = self.agent_state.llm_config.model
 
-        # Store the system instructions (used to rebuild memory)
-        if "system" not in self.agent_state.state:
-            raise ValueError(f"'system' not found in provided AgentState")
-        self.system = self.agent_state.state["system"]
-
         all_functions = load_all_function_sets()
         self.functions = [fs["json_schema"] for fs in all_functions.values()]
         self.functions_python = {k: v["python_function"] for k, v in all_functions.items()}
 
         assert all([callable(f) for k, f in self.functions_python.items()]), self.functions_python
 
-        # Initialize the memory object
-        if "persona" not in self.agent_state.state:
-            raise ValueError(f"'persona' not found in provided AgentState")
         if "human" not in self.agent_state.state:
             raise ValueError(f"'human' not found in provided AgentState")
         self.memory = initialize_memory(ai_notes=self.agent_state.state["persona"], human_notes=self.agent_state.state["human"])
 
         self.interface = interface
-        self.persistence_manager = LocalStateManager(agent_state=self.agent_state)
-
-        self.first_message_verify_mono = first_message_verify_mono
+        self.persistence_manager = PersistenceManager(agent_state=self.agent_state)
 
         # Controls if the convo memory pressure warning is triggered
         # When an alert is sent in the message queue, set this to True (to avoid repeat alerts)
@@ -220,10 +171,7 @@ class Agent(object):
             self._messages.extend([cast(Message, msg) for msg in raw_messages if msg is not None])
 
         else:
-            # print(f"Agent.__init__ :: creating, state={agent_state.state['messages']}")
             init_messages = initialize_message_sequence(
-                self.model,
-                self.system,
                 self.memory,
             )
             init_messages_objs = []
@@ -234,14 +182,7 @@ class Agent(object):
                     )
                 )
             assert all([isinstance(msg, Message) for msg in init_messages_objs]), (init_messages_objs, init_messages)
-            self.messages_total = 0
             self._append_to_messages(added_messages=[cast(Message, msg) for msg in init_messages_objs if msg is not None])
-
-        # Keep track of the total number of messages throughout all time
-        self.messages_total = messages_total if messages_total is not None else (len(self._messages) - 1)  # (-system)
-        # self.messages_total_init = self.messages_total
-        self.messages_total_init = len(self._messages) - 1
-        printd(f"Agent initialized, self.messages_total={self.messages_total}")
 
         # Create the agent in the DB
         # self.save()
@@ -258,7 +199,6 @@ class Agent(object):
 
     def _trim_messages(self, num):
         """Trim messages from the front, not including the system message"""
-        self.persistence_manager.trim_messages(num)
 
         new_messages = [self._messages[0]] + self._messages[num:]
         self._messages = new_messages
@@ -271,7 +211,6 @@ class Agent(object):
 
         new_messages = [self._messages[0]] + added_messages + self._messages[1:]  # prepend (no system)
         self._messages = new_messages
-        self.messages_total += len(added_messages)  # still should increment the message counter (summaries are additions too)
 
     def _append_to_messages(self, added_messages: List[Message]):
         """Wrapper around self.messages.append to allow additional calls to a state/persistence manager"""
@@ -279,14 +218,9 @@ class Agent(object):
 
         self.persistence_manager.append_to_messages(added_messages)
 
-        # strip extra metadata if it exists
-        # for msg in added_messages:
-        # msg.pop("api_response", None)
-        # msg.pop("api_args", None)
         new_messages = self._messages + added_messages  # append
 
         self._messages = new_messages
-        self.messages_total += len(added_messages)
 
     def append_to_messages(self, added_messages: List[dict]):
         """An external-facing message append, where dict-like messages are first converted to Message objects"""
@@ -300,16 +234,6 @@ class Agent(object):
             for msg in added_messages
         ]
         self._append_to_messages(added_messages_objs)
-
-    def _swap_system_message(self, new_system_message: Message):
-        assert isinstance(new_system_message, Message)
-        assert new_system_message.role == "system", new_system_message
-        assert self._messages[0].role == "system", self._messages
-
-        self.persistence_manager.swap_system_message(new_system_message)
-
-        new_messages = [new_system_message] + self._messages[1:]  # swap index 0 (system)
-        self._messages = new_messages
 
     def _get_ai_reply(
         self,
@@ -345,30 +269,23 @@ class Agent(object):
         messages = []  # append these to the history when done
 
         # Step 2: check if LLM wanted to call a function
-        if response_message.function_call or (response_message.tool_calls is not None and len(response_message.tool_calls) > 0):
-            if response_message.function_call:
-                raise DeprecationWarning(response_message)
+        if response_message.tool_calls is not None and len(response_message.tool_calls) > 0:
             if response_message.tool_calls is not None and len(response_message.tool_calls) > 1:
                 # raise NotImplementedError(f">1 tool call not supported")
                 # TODO eventually support sequential tool calling
                 printd(f">1 tool call not supported, using index=0 only\n{response_message.tool_calls}")
                 response_message.tool_calls = [response_message.tool_calls[0]]
-            assert response_message.tool_calls is not None and len(response_message.tool_calls) > 0
 
             # The content if then internal monologue, not chat
             self.interface.internal_monologue(response_message.content)
 
             # generate UUID for tool call
-            if override_tool_call_id or response_message.function_call:
+            if override_tool_call_id:
                 tool_call_id = get_tool_call_id()  # needs to be a string for JSON
                 response_message.tool_calls[0].id = tool_call_id
             else:
                 tool_call_id = response_message.tool_calls[0].id
                 assert tool_call_id is not None  # should be defined
-
-            # only necessary to add the tool_cal_id to a function call (antipattern)
-            # response_message_dict = response_message.model_dump()
-            # response_message_dict["tool_call_id"] = tool_call_id
 
             # role: assistant (requesting tool call, set tool call ID)
             messages.append(
@@ -385,14 +302,12 @@ class Agent(object):
             # Note: the JSON response may not always be valid; be sure to handle errors
 
             # Failure case 1: function name is wrong
-            function_call = (
-                response_message.function_call if response_message.function_call is not None else response_message.tool_calls[0].function
-            )
+            function_call = response_message.tool_calls[0].function
             function_name = function_call.name
             printd(f"Request to call function {function_name} with tool_call_id: {tool_call_id}")
             try:
                 function_to_call = self.functions_python[function_name]
-            except KeyError as e:
+            except KeyError:
                 error_msg = f"No function named {function_name}"
                 function_response = package_function_response(False, error_msg)
                 messages.append(
@@ -415,7 +330,7 @@ class Agent(object):
             try:
                 raw_function_args = function_call.arguments
                 function_args = parse_json(raw_function_args)
-            except Exception as e:
+            except Exception:
                 error_msg = f"Error parsing JSON for function '{function_name}' arguments: {function_call.arguments}"
                 function_response = package_function_response(False, error_msg)
                 messages.append(
@@ -526,9 +441,6 @@ class Agent(object):
     def step(
         self,
         user_message: Union[Message, str],  # NOTE: should be json.dump(dict)
-        first_message: bool = False,
-        first_message_retry_limit: int = FIRST_MESSAGE_ATTEMPTS,
-        skip_verify: bool = False,
     ) -> Tuple[List[dict], bool, bool, bool]:
         """Top-level event message handler for the MemGPT agent"""
 
@@ -544,26 +456,6 @@ class Agent(object):
 
                 self.interface.user_message(user_message_text)
                 packed_user_message = {"role": "user", "content": user_message_text}
-                # Special handling for AutoGen messages with 'name' field
-                try:
-                    user_message_json = json.loads(user_message_text, strict=JSON_LOADS_STRICT)
-                    # Special handling for AutoGen messages with 'name' field
-                    # Treat 'name' as a special field
-                    # If it exists in the input message, elevate it to the 'message' level
-                    if "name" in user_message_json:
-                        packed_user_message["name"] = user_message_json["name"]
-                        user_message_json.pop("name", None)
-                        packed_user_message["content"] = json.dumps(user_message_json, ensure_ascii=JSON_ENSURE_ASCII)
-                except Exception as e:
-                    print(f"{CLI_WARNING_PREFIX}handling of 'name' field failed with: {e}")
-
-                # Create the associated Message object (in the database)
-                packed_user_message_obj = Message.dict_to_message(
-                    agent_id=self.agent_state.id,
-                    user_id=self.agent_state.user_id,
-                    model=self.model,
-                    openai_message_dict=packed_user_message,
-                )
 
                 input_message_sequence = self.messages + [packed_user_message]
             # Alternatively, the requestor can send an empty user message
@@ -574,25 +466,9 @@ class Agent(object):
             if len(input_message_sequence) > 1 and input_message_sequence[-1]["role"] != "user":
                 printd(f"{CLI_WARNING_PREFIX}Attempting to run ChatCompletion without user as the last message in the queue")
 
-            # Step 1: send the conversation and available functions to GPT
-            if not skip_verify and (first_message or self.messages_total == self.messages_total_init):
-                printd(f"This is the first message. Running extra verifier on AI response.")
-                counter = 0
-                while True:
-                    response = self._get_ai_reply(
-                        message_sequence=input_message_sequence,
-                    )
-                    if verify_first_message_correctness(response, require_monologue=self.first_message_verify_mono):
-                        break
-
-                    counter += 1
-                    if counter > first_message_retry_limit:
-                        raise Exception(f"Hit first message retry limit ({first_message_retry_limit})")
-
-            else:
-                response = self._get_ai_reply(
-                    message_sequence=input_message_sequence,
-                )
+            response = self._get_ai_reply(
+                message_sequence=input_message_sequence,
+            )
 
             # Step 2: check if LLM wanted to call a function
             # (if yes) Step 3: call the function
@@ -611,7 +487,7 @@ class Agent(object):
                             agent_id=self.agent_state.id,
                             user_id=self.agent_state.user_id,
                             model=self.model,
-                            openai_message_dict=packed_user_message,
+                            openai_message_dict=packed_user_message,  # type: ignore
                         )
                     ] + all_response_messages
             else:
@@ -643,7 +519,7 @@ class Agent(object):
 
             self._append_to_messages(all_new_messages)
             all_new_messages_dicts = [msg.to_openai_dict() for msg in all_new_messages]
-            return all_new_messages_dicts, heartbeat_request, function_failed, active_memory_warning, response.usage.completion_tokens
+            return all_new_messages_dicts, heartbeat_request, function_failed, active_memory_warning, response.usage.completion_tokens  # type: ignore
 
         except Exception as e:
             printd(f"step() failed\nuser_message = {user_message}\nerror = {e}")
@@ -654,7 +530,7 @@ class Agent(object):
                 self.summarize_messages_inplace()
 
                 # Try step again
-                return self.step(user_message, first_message=first_message)
+                return self.step(user_message)
             else:
                 printd(f"step() failed with an unrecognized exception: '{str(e)}'")
                 raise e
@@ -746,11 +622,8 @@ class Agent(object):
         printd(f"Got summary: {summary}")
 
         # Metadata that's useful for the agent to see
-        all_time_message_count = self.messages_total
-        remaining_message_count = len(self.messages[cutoff:])
-        hidden_message_count = all_time_message_count - remaining_message_count
         summary_message_count = len(message_sequence_to_summarize)
-        summary_message = package_summarize_message(summary, summary_message_count, hidden_message_count, all_time_message_count)
+        summary_message = package_summarize_message(summary, summary_message_count)
         printd(f"Packaged into message: {summary_message}")
 
         prior_len = len(self.messages)
@@ -772,32 +645,10 @@ class Agent(object):
 
         printd(f"Ran summarizer, messages length {prior_len} -> {len(self.messages)}")
 
-    def rebuild_memory(self):
-        """Rebuilds the system message with the latest memory object"""
-        curr_system_message = self.messages[0]  # this is the system + memory bank, not just the system prompt
-        new_system_message = initialize_message_sequence(
-            self.model,
-            self.system,
-            self.memory,
-            archival_memory=self.persistence_manager.archival_memory,
-            recall_memory=self.persistence_manager.recall_memory,
-        )[0]
-
-        diff = united_diff(curr_system_message["content"], new_system_message["content"])
-        printd(f"Rebuilding system with new memory...\nDiff:\n{diff}")
-
-        # Swap the system message out
-        self._swap_system_message(
-            Message.dict_to_message(
-                agent_id=self.agent_state.id, user_id=self.agent_state.user_id, model=self.model, openai_message_dict=new_system_message
-            )
-        )
-
     def update_state(self) -> AgentState:
         updated_state = {
             "persona": self.memory.persona,
             "human": self.memory.human,
-            "system": self.system,
             "functions": self.functions,
             "messages": [str(msg.id) for msg in self._messages],
         }
@@ -805,11 +656,9 @@ class Agent(object):
         self.agent_state = AgentState(
             name=self.agent_state.name,
             user_id=self.agent_state.user_id,
-            persona=self.agent_state.persona,
             human=self.agent_state.human,
             llm_config=self.agent_state.llm_config,
             embedding_config=self.agent_state.embedding_config,
-            preset=self.agent_state.preset,
             id=self.agent_state.id,
             created_at=self.agent_state.created_at,
             state=updated_state,

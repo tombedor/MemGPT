@@ -40,17 +40,6 @@ class MemGPTConfig:
     # embedding parameters
     default_embedding_config: EmbeddingConfig = field(default_factory=EmbeddingConfig)
 
-    # database configs: recall
-    recall_storage_type: str = ""  # local, db
-    recall_storage_uri: str = ""
-
-    # database configs: metadata storage (sources, agents, data sources)
-    metadata_storage_type: str = ""
-    metadata_storage_uri: str = ""
-
-    archival_storage_type: str = ""
-    archival_storage_uri: str = ""
-
     # full names of modules
     functions_modules: Set[str] = field(default_factory=set)
 
@@ -91,14 +80,14 @@ class MemGPTConfig:
         embedding_config_dict = {k: v for k, v in embedding_config_dict.items() if v is not None}
         # Correct the types that aren't strings
         if llm_config_dict["context_window"] is not None:
-            llm_config_dict["context_window"] = int(llm_config_dict["context_window"])
+            llm_config_dict["context_window"] = int(llm_config_dict["context_window"])  # type: ignore
         if embedding_config_dict["embedding_dim"] is not None:
-            embedding_config_dict["embedding_dim"] = int(embedding_config_dict["embedding_dim"])
+            embedding_config_dict["embedding_dim"] = int(embedding_config_dict["embedding_dim"])  # type: ignore
         if embedding_config_dict["embedding_chunk_size"] is not None:
-            embedding_config_dict["embedding_chunk_size"] = int(embedding_config_dict["embedding_chunk_size"])
+            embedding_config_dict["embedding_chunk_size"] = int(embedding_config_dict["embedding_chunk_size"])  # type: ignore
         # Construct the inner properties
-        llm_config = LLMConfig(**llm_config_dict)
-        embedding_config = EmbeddingConfig(**embedding_config_dict)
+        llm_config = LLMConfig(**llm_config_dict)  # type: ignore
+        embedding_config = EmbeddingConfig(**embedding_config_dict)  # type: ignore
 
         if config.has_option("functions", "modules"):
             function_modules = {m.strip() for m in config.get("functions", "modules").split(",")}
@@ -117,21 +106,10 @@ class MemGPTConfig:
             "human": get_field(config, "defaults", "human"),
             "agent": get_field(config, "defaults", "agent"),
             # Storage related
-            "archival_storage_type": get_field(config, "archival_storage", "type"),
-            "archival_storage_uri": get_field(config, "archival_storage", "uri"),
-            "recall_storage_type": get_field(config, "recall_storage", "type"),
-            "recall_storage_uri": get_field(config, "recall_storage", "uri"),
-            "metadata_storage_type": get_field(config, "metadata_storage", "type"),
-            "metadata_storage_uri": get_field(config, "metadata_storage", "uri"),
             # Misc
             "anon_clientid": get_field(config, "client", "anon_clientid"),
             "functions_modules": function_modules,
         }
-
-        if os.environ.get("POSTGRES_URL"):
-            config_dict["recall_storage_uri"] = os.environ.get("POSTGRES_URL")
-            config_dict["metadata_storage_uri"] = os.environ.get("POSTGRES_URL")
-            config_dict["archival_storage_uri"] = os.environ.get("POSTGRES_URL")
 
         # Don't include null values
         config_dict = {k: v for k, v in config_dict.items() if v is not None}

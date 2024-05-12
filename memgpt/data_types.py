@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, TypeVar
 import numpy as np
 
-from memgpt.constants import DEFAULT_HUMAN_TEXT, DEFAULT_PERSONA_TEXT, LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
+from memgpt.constants import DEFAULT_HUMAN_TEXT, LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
 from memgpt.utils import create_uuid_from_string
 
 from pydantic import BaseModel, Field
@@ -37,8 +37,6 @@ class ToolCall(object):
     def __init__(
         self,
         id: str,
-        # TODO should we include this? it's fixed to 'function' only (for now) in OAI schema
-        # NOTE: called ToolCall.type in official OpenAI schema
         tool_call_type: str,  # only 'function' is supported
         # function: { 'name': ..., 'arguments': ...}
         function: Dict[str, str],
@@ -127,7 +125,6 @@ class Message(Record):
         agent_id: uuid.UUID,
         openai_message_dict: dict,
         model: Optional[str] = None,  # model used to make function call
-        allow_functions_style: bool = False,  # allow deprecated functions style?
         created_at: Optional[datetime] = None,
     ):
         """Convert a ChatCompletion message object into a Message object (synced to DB)"""
@@ -135,90 +132,36 @@ class Message(Record):
         assert "role" in openai_message_dict, openai_message_dict
         assert "content" in openai_message_dict, openai_message_dict
 
-        # If we're going from deprecated function form
-        if openai_message_dict["role"] == "function":
-            if not allow_functions_style:
-                raise DeprecationWarning(openai_message_dict)
-            assert "tool_call_id" in openai_message_dict, openai_message_dict
-
-            # Convert from 'function' response to a 'tool' response
-            # NOTE: this does not conventionally include a tool_call_id, it's on the caster to provide it
-            return Message(
-                created_at=created_at,
-                user_id=user_id,
-                agent_id=agent_id,
-                model=model,
-                # standard fields expected in an OpenAI ChatCompletion message object
-                role="tool",  # NOTE
-                text=openai_message_dict["content"],
-                name=openai_message_dict["name"] if "name" in openai_message_dict else None,
-                tool_calls=openai_message_dict["tool_calls"] if "tool_calls" in openai_message_dict else None,
-                tool_call_id=openai_message_dict["tool_call_id"] if "tool_call_id" in openai_message_dict else None,
-            )
-
-        elif "function_call" in openai_message_dict and openai_message_dict["function_call"] is not None:
-            if not allow_functions_style:
-                raise DeprecationWarning(openai_message_dict)
-            assert openai_message_dict["role"] == "assistant", openai_message_dict
-            assert "tool_call_id" in openai_message_dict, openai_message_dict
-
-            # Convert a function_call (from an assistant message) into a tool_call
-            # NOTE: this does not conventionally include a tool_call_id (ToolCall.id), it's on the caster to provide it
-            tool_calls = [
-                ToolCall(
-                    id=openai_message_dict["tool_call_id"],  # NOTE: unconventional source, not to spec
-                    tool_call_type="function",
-                    function={
-                        "name": openai_message_dict["function_call"]["name"],
-                        "arguments": openai_message_dict["function_call"]["arguments"],
-                    },
-                )
-            ]
-
-            return Message(
-                created_at=created_at,
-                user_id=user_id,
-                agent_id=agent_id,
-                model=model,
-                # standard fields expected in an OpenAI ChatCompletion message object
-                role=openai_message_dict["role"],
-                text=openai_message_dict["content"],
-                name=openai_message_dict["name"] if "name" in openai_message_dict else None,
-                tool_calls=tool_calls,
-                tool_call_id=None,  # NOTE: None, since this field is only non-null for role=='tool'
-            )
-
+        # Basic sanity check
+        if openai_message_dict["role"] == "tool":
+            assert "tool_call_id" in openai_message_dict and openai_message_dict["tool_call_id"] is not None, openai_message_dict
         else:
-            # Basic sanity check
-            if openai_message_dict["role"] == "tool":
-                assert "tool_call_id" in openai_message_dict and openai_message_dict["tool_call_id"] is not None, openai_message_dict
-            else:
-                if "tool_call_id" in openai_message_dict:
-                    assert openai_message_dict["tool_call_id"] is None, openai_message_dict
+            if "tool_call_id" in openai_message_dict:
+                assert openai_message_dict["tool_call_id"] is None, openai_message_dict
 
-            if "tool_calls" in openai_message_dict and openai_message_dict["tool_calls"] is not None:
-                assert openai_message_dict["role"] == "assistant", openai_message_dict
+        if "tool_calls" in openai_message_dict and openai_message_dict["tool_calls"] is not None:
+            assert openai_message_dict["role"] == "assistant", openai_message_dict
 
-                tool_calls = [
-                    ToolCall(id=tool_call["id"], tool_call_type=tool_call["type"], function=tool_call["function"])
-                    for tool_call in openai_message_dict["tool_calls"]
-                ]
-            else:
-                tool_calls = None
+            tool_calls = [
+                ToolCall(id=tool_call["id"], tool_call_type=tool_call["type"], function=tool_call["function"])
+                for tool_call in openai_message_dict["tool_calls"]
+            ]
+        else:
+            tool_calls = None
 
-            # If we're going from tool-call style
-            return Message(
-                created_at=created_at,
-                user_id=user_id,
-                agent_id=agent_id,
-                model=model,
-                # standard fields expected in an OpenAI ChatCompletion message object
-                role=openai_message_dict["role"],
-                text=openai_message_dict["content"],
-                name=openai_message_dict["name"] if "name" in openai_message_dict else None,
-                tool_calls=tool_calls,
-                tool_call_id=openai_message_dict["tool_call_id"] if "tool_call_id" in openai_message_dict else None,
-            )
+        # If we're going from tool-call style
+        return Message(
+            created_at=created_at,
+            user_id=user_id,
+            agent_id=agent_id,
+            model=model,
+            # standard fields expected in an OpenAI ChatCompletion message object
+            role=openai_message_dict["role"],
+            text=openai_message_dict["content"],
+            name=openai_message_dict["name"] if "name" in openai_message_dict else None,
+            tool_calls=tool_calls,
+            tool_call_id=openai_message_dict["tool_call_id"] if "tool_call_id" in openai_message_dict else None,
+        )
 
     def to_openai_dict(self):
         """Go from Message class to ChatCompletion message object"""
@@ -255,7 +198,7 @@ class Message(Record):
             if self.name is not None:
                 openai_message["name"] = self.name
             if self.tool_calls is not None:
-                openai_message["tool_calls"] = [tool_call.to_dict() for tool_call in self.tool_calls]
+                openai_message["tool_calls"] = [tool_call.to_dict() for tool_call in self.tool_calls]  # type: ignore
 
         elif self.role == "tool":
             assert all([v is not None for v in [self.role, self.tool_call_id]]), vars(self)
@@ -268,23 +211,6 @@ class Message(Record):
             raise ValueError(self.role)
 
         return openai_message
-
-
-class Document(Record):
-    """A document represent a document loaded into MemGPT, which is broken down into passages."""
-
-    def __init__(self, user_id: uuid.UUID, text: str, data_source: str, id: Optional[uuid.UUID] = None, metadata: Optional[Dict] = {}):
-        if id is None:
-            # by default, generate ID as a hash of the text (avoid duplicates)
-            self.id = create_uuid_from_string("".join([text, str(user_id)]))
-        else:
-            self.id = id
-        super().__init__(id)
-        self.user_id = user_id
-        self.text = text
-        self.data_source = data_source
-        self.metadata = metadata
-        # TODO: add optional embedding?
 
 
 class Passage(Record):
@@ -392,11 +318,9 @@ class User:
 
     def __init__(
         self,
-        # name: str,
-        id: Optional[uuid.UUID] = None,
+        id: uuid.UUID,
         default_agent=None,
         # other
-        policies_accepted=False,
     ):
         if id is None:
             self.id = uuid.uuid4()
@@ -406,20 +330,15 @@ class User:
 
         self.default_agent = default_agent
 
-        # misc
-        self.policies_accepted = policies_accepted
-
 
 class AgentState:
     def __init__(
         self,
         name: str,
         user_id: uuid.UUID,
-        persona: str,  # the filename where the persona was originally sourced from
         human: str,  # the filename where the human was originally sourced from
         llm_config: LLMConfig,
         embedding_config: EmbeddingConfig,
-        preset: str,
         id: Optional[uuid.UUID] = None,
         state: Optional[dict] = None,
         created_at: Optional[datetime] = None,
@@ -431,12 +350,8 @@ class AgentState:
         assert isinstance(self.id, uuid.UUID), f"UUID {self.id} must be a UUID type"
         assert isinstance(user_id, uuid.UUID), f"UUID {user_id} must be a UUID type"
 
-        # TODO(swooders) we need to handle the case where name is None here
-        # in AgentConfig we autogenerate a name, not sure what the correct thing w/ DBs is, what about NounAdjective combos? Like giphy does? BoredGiraffe etc
         self.name = name
         self.user_id = user_id
-        self.preset = preset
-        self.persona = persona
         self.human = human
 
         self.llm_config = llm_config
@@ -448,66 +363,10 @@ class AgentState:
         self.state = {} if not state else state
 
 
-class Source:
-    def __init__(
-        self,
-        user_id: uuid.UUID,
-        name: str,
-        created_at: Optional[datetime] = None,
-        id: Optional[uuid.UUID] = None,
-        # embedding info
-        embedding_model: Optional[str] = None,
-        embedding_dim: Optional[int] = None,
-    ):
-        if id is None:
-            self.id = uuid.uuid4()
-        else:
-            self.id = id
-        assert isinstance(self.id, uuid.UUID), f"UUID {self.id} must be a UUID type"
-        assert isinstance(user_id, uuid.UUID), f"UUID {user_id} must be a UUID type"
-
-        self.name = name
-        self.user_id = user_id
-        self.created_at = created_at if created_at is not None else datetime.now()
-
-        # embedding info (optional)
-        self.embedding_dim = embedding_dim
-        self.embedding_model = embedding_model
-
-
-class Token:
-    def __init__(
-        self,
-        user_id: uuid.UUID,
-        token: str,
-        name: Optional[str] = None,
-        id: Optional[uuid.UUID] = None,
-    ):
-        if id is None:
-            self.id = uuid.uuid4()
-        else:
-            self.id = id
-        assert isinstance(self.id, uuid.UUID), f"UUID {self.id} must be a UUID type"
-        assert isinstance(user_id, uuid.UUID), f"UUID {user_id} must be a UUID type"
-
-        self.token = token
-        self.user_id = user_id
-        self.name = name
-
-
 class Preset(BaseModel):
     name: str = Field(..., description="The name of the preset.")
     id: uuid.UUID = Field(default_factory=uuid.uuid4, description="The unique identifier of the preset.")
     user_id: uuid.UUID = Field(..., description="The unique identifier of the user who created the preset.")
     description: Optional[str] = Field(None, description="The description of the preset.")
     created_at: datetime = Field(default_factory=datetime.now, description="The unix timestamp of when the preset was created.")
-    system: str = Field(..., description="The system prompt of the preset.")
-    persona: str = Field(default=DEFAULT_PERSONA_TEXT, description="The persona of the preset.")
     human: str = Field(default=DEFAULT_HUMAN_TEXT, description="The human of the preset.")
-
-
-class Function(BaseModel):
-    name: str = Field(..., description="The name of the function.")
-    id: uuid.UUID = Field(..., description="The unique identifier of the function.")
-    user_id: uuid.UUID = Field(..., description="The unique identifier of the user who created the function.")
-    # TODO: figure out how represent functions

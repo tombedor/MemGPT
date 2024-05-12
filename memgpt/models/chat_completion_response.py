@@ -3,11 +3,6 @@ from pydantic import BaseModel
 import datetime
 
 
-# class ToolCallFunction(BaseModel):
-#     name: str
-#     arguments: str
-
-
 class FunctionCall(BaseModel):
     arguments: str
     name: str
@@ -38,7 +33,6 @@ class Message(BaseModel):
     content: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
     role: str
-    function_call: Optional[FunctionCall] = None  # Deprecated
 
 
 class Choice(BaseModel):

@@ -4,8 +4,7 @@ import requests
 import time
 import urllib
 
-from memgpt.credentials import MemGPTCredentials
-from memgpt.constants import CLI_WARNING_PREFIX
+from memgpt.constants import CLI_WARNING_PREFIX, OPENAI_API_KEY
 from memgpt.models.chat_completion_response import ChatCompletionResponse
 
 from memgpt.data_types import AgentState
@@ -56,7 +55,7 @@ def smart_urljoin(base_url, relative_url):
     """urljoin is stupid and wants a trailing / at the end of the endpoint address, or it will chop the suffix off"""
     if not base_url.endswith("/"):
         base_url += "/"
-    return urllib.parse.urljoin(base_url, relative_url)
+    return urllib.parse.urljoin(base_url, relative_url)  # type: ignore
 
 
 def openai_chat_completions_request(url, api_key, data):
@@ -174,9 +173,6 @@ def create(
 
     printd(f"Using model {agent_state.llm_config.model_endpoint_type}, endpoint: {agent_state.llm_config.model_endpoint}")
 
-    # TODO eventually refactor so that credentials are passed through
-    credentials = MemGPTCredentials.load()
-
     if function_call and not functions:
         printd("unsetting function_call because functions is None")
         function_call = None
@@ -184,8 +180,7 @@ def create(
     # openai
     if agent_state.llm_config.model_endpoint_type == "openai":
         # TODO do the same for Azure?
-        if credentials.openai_key is None:
-            raise ValueError(f"OpenAI key is missing from MemGPT config file")
+
         data = dict(
             model=agent_state.llm_config.model,
             messages=messages,
@@ -196,7 +191,7 @@ def create(
 
         return openai_chat_completions_request(
             url=agent_state.llm_config.model_endpoint,  # https://api.openai.com/v1 -> https://api.openai.com/v1/chat/completions
-            api_key=credentials.openai_key,
+            api_key=OPENAI_API_KEY,
             data=data,
         )
 

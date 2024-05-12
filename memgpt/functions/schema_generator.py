@@ -113,6 +113,7 @@ def generate_schema(function):
         else:
             # Add parameter details to the schema
             param_doc = next((d for d in docstring.params if d.arg_name == param.name), None)
+            assert param_doc
             schema["parameters"]["properties"][param.name] = {
                 # "type": "string" if param.annotation == str else str(param.annotation),
                 "type": type_to_json_schema_type(param.annotation) if param.annotation != inspect.Parameter.empty else "string",
