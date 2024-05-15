@@ -207,7 +207,7 @@ class Agent(object):
         """Wrapper around self.messages.prepend to allow additional calls to a state/persistence manager"""
         assert all([isinstance(msg, Message) for msg in added_messages])
 
-        self.persistence_manager.prepend_to_messages(added_messages)
+        self.persistence_manager.persist_messages(added_messages)
 
         new_messages = [self._messages[0]] + added_messages + self._messages[1:]  # prepend (no system)
         self._messages = new_messages
@@ -216,7 +216,7 @@ class Agent(object):
         """Wrapper around self.messages.append to allow additional calls to a state/persistence manager"""
         assert all([isinstance(msg, Message) for msg in added_messages])
 
-        self.persistence_manager.append_to_messages(added_messages)
+        self.persistence_manager.persist_messages(added_messages)
 
         new_messages = self._messages + added_messages  # append
 
@@ -535,7 +535,18 @@ class Agent(object):
                 printd(f"step() failed with an unrecognized exception: '{str(e)}'")
                 raise e
 
-    def summarize_messages_inplace(self, cutoff=None, preserve_last_N_messages=True, disallow_tool_as_first=True):
+    def get_system_message_text(self):
+        return self._messages[0].text
+
+    def set_system_message_text(self, new_system_message_text: str):
+        system_message = self._messages[0]
+        system_message.text = new_system_message_text
+        system_message.id = uuid.uuid4()
+        self.persistence_manager.persist_messages([system_message])
+        self._messages[0] = system_message
+        save_agent(self, MetadataStore())
+
+    def summarize_messages_inplace(self):
         assert self.messages[0]["role"] == "system", f"self.messages[0] should be system (instead got {self.messages[0]})"
 
         # Start at index 1 (past the system message),
@@ -547,18 +558,8 @@ class Agent(object):
         candidate_messages_to_summarize = self.messages[1:]
         token_counts = token_counts[1:]
 
-        if preserve_last_N_messages:
-            candidate_messages_to_summarize = candidate_messages_to_summarize[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
-            token_counts = token_counts[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
-
-        # if disallow_tool_as_first:
-        #     # We have to make sure that a "tool" call is not sitting at the front (after system message),
-        #     # otherwise we'll get an error from OpenAI (if using the OpenAI API)
-        #     while len(candidate_messages_to_summarize) > 0:
-        #         if candidate_messages_to_summarize[0]["role"] in ["tool", "function"]:
-        #             candidate_messages_to_summarize.pop(0)
-        #         else:
-        #             break
+        candidate_messages_to_summarize = candidate_messages_to_summarize[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
+        token_counts = token_counts[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
 
         printd(f"MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC={MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC}")
         printd(f"MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST={MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST}")
@@ -596,10 +597,9 @@ class Agent(object):
             pass
 
         # Make sure the cutoff isn't on a 'tool' or 'function'
-        if disallow_tool_as_first:
-            while self.messages[cutoff]["role"] in ["tool", "function"] and cutoff < len(self.messages):
-                printd(f"Selected cutoff {cutoff} was a 'tool', shifting one...")
-                cutoff += 1
+        while self.messages[cutoff]["role"] in ["tool", "function"] and cutoff < len(self.messages):
+            printd(f"Selected cutoff {cutoff} was a 'tool', shifting one...")
+            cutoff += 1
 
         message_sequence_to_summarize = self.messages[1:cutoff]  # do NOT get rid of the system message
         if len(message_sequence_to_summarize) <= 1:

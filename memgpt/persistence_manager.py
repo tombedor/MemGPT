@@ -16,22 +16,5 @@ class PersistenceManager:
         self.archival_memory = EmbeddingArchivalMemory(agent_state)
         self.recall_memory = RecallMemory(agent_state)
 
-    def prepend_to_messages(self, added_messages: List[Message]):
-        # first tag with timestamps
-        # added_messages = [{"timestamp": get_local_time(), "message": msg} for msg in added_messages]
-
-        printd(f"{self.__class__.__name__}.prepend_to_message")
-        # self.messages = [self.messages[0]] + added_messages + self.messages[1:]
-
-        # add to recall memory
-        self.recall_memory.insert_many([m for m in added_messages])
-
-    def append_to_messages(self, added_messages: List[Message]):
-        # first tag with timestamps
-        # added_messages = [{"timestamp": get_local_time(), "message": msg} for msg in added_messages]
-
-        printd(f"{self.__class__.__name__}.append_to_messages")
-        # self.messages = self.messages + added_messages
-
-        # add to recall memory
+    def persist_messages(self, added_messages: List[Message]):
         self.recall_memory.insert_many([m for m in added_messages])
