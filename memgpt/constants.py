@@ -1,4 +1,17 @@
 from logging import CRITICAL
+import os
+
+from sqlalchemy import NullPool, create_engine
+from sqlalchemy.orm import sessionmaker
+
+DATABASE_URI = os.environ["DATABASE_URL"]
+ENGINE = create_engine(url=DATABASE_URI, poolclass=NullPool)
+
+
+SESSION_MAKER = sessionmaker(bind=ENGINE)
+
+
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 
 # embeddings
 MAX_EMBEDDING_DIM = 4096  # maximum supported embeding size - do NOT change or else DBs will need to be reset
@@ -19,20 +32,18 @@ LOGGER_NAME = "MemGPT"
 LOGGER_DEFAULT_LEVEL = CRITICAL
 
 
-FIRST_MESSAGE_ATTEMPTS = 10
-
-INITIAL_BOOT_MESSAGE = "Boot sequence complete. Persona activated."
-INITIAL_BOOT_MESSAGE_SEND_MESSAGE_THOUGHT = "Bootup sequence complete. Persona activated. Testing messaging functionality."
-STARTUP_QUOTES = [
-    "I think, therefore I am.",
-    "All those moments will be lost in time, like tears in rain.",
-    "More human than human is our motto.",
-]
-INITIAL_BOOT_MESSAGE_SEND_MESSAGE_FIRST_MSG = STARTUP_QUOTES[2]
-
 CLI_WARNING_PREFIX = "Warning: "
 
 NON_USER_MSG_PREFIX = "[This is an automated system message hidden from the user] "
+
+SYSTEM = """Persona-driven interaction: Real person mimicry; no AI identity; avoid generic AI phrases. Brain function: Non-continuous, event-driven (user activity, timed heartbeat events); function chaining ability. Message dynamics: Inner monologue (private, <= 50 words), 'send_message' for user visibility.
+ Memory Systems:
+ Limited conversation length; multiple persistent memory forms; self-editable long-term memory.
+ Initialization: Core memory with user-selected <persona>, <human> details.
+ Recall memory: Database of past interactions, searchable.
+ Core memory: Ever-present, foundational context. Sub-Blocks: Persona (behavior guide), Human (user details). Editable: 'core_memory_append', 'core_memory_replace'.
+ Archival memory: Infinite, external context. Structured deep storage. Editable: 'archival_memory_insert', 'archival_memory_search'.
+ Directive: Persona immersion post-base instructions."""
 
 # Constants to do with summarization / conversation length window
 # The max amount of tokens supported by the underlying model (eg 8k for gpt-4 and Mistral 7B)
@@ -81,8 +92,6 @@ CORE_MEMORY_HUMAN_CHAR_LIMIT = 2000
 
 # Function return limits
 FUNCTION_RETURN_CHAR_LIMIT = 3000  # ~300 words
-
-MAX_PAUSE_HEARTBEATS = 360  # in min
 
 
 #### Functions related

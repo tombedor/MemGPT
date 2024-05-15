@@ -1,9 +1,8 @@
 from typing import Optional
-import datetime
 import json
 import math
 
-from memgpt.constants import MAX_PAUSE_HEARTBEATS, RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE, JSON_ENSURE_ASCII
+from memgpt.constants import RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE, JSON_ENSURE_ASCII
 
 ### Functions / tools the agent can use
 # All functions should return a response string (or None)
@@ -21,65 +20,6 @@ def send_message(self, message: str) -> Optional[str]:
         Optional[str]: None is always returned as this function does not produce a response.
     """
     self.interface.assistant_message(message)
-    return None
-
-
-# Construct the docstring dynamically (since it should use the external constants)
-pause_heartbeats_docstring = f"""
-Temporarily ignore timed heartbeats. You may still receive messages from manual heartbeats and other events.
-
-Args:
-    minutes (int): Number of minutes to ignore heartbeats for. Max value of {MAX_PAUSE_HEARTBEATS} minutes ({MAX_PAUSE_HEARTBEATS // 60} hours).
-
-Returns:
-    str: Function status response
-"""
-
-
-def pause_heartbeats(self, minutes: int) -> Optional[str]:
-    minutes = min(MAX_PAUSE_HEARTBEATS, minutes)
-
-    # Record the current time
-    self.pause_heartbeats_start = datetime.datetime.now()
-    # And record how long the pause should go for
-    self.pause_heartbeats_minutes = int(minutes)
-
-    return f"Pausing timed heartbeats for {minutes} min"
-
-
-pause_heartbeats.__doc__ = pause_heartbeats_docstring
-
-
-def core_memory_append(self, name: str, content: str) -> Optional[str]:
-    """
-    Append to the contents of core memory.
-
-    Args:
-        name (str): Section of the memory to be edited (persona or human).
-        content (str): Content to write to the memory. All unicode (including emojis) are supported.
-
-    Returns:
-        Optional[str]: None is always returned as this function does not produce a response.
-    """
-    self.memory.edit_append(name, content)
-    self.rebuild_memory()
-    return None
-
-
-def core_memory_replace(self, name: str, old_content: str, new_content: str) -> Optional[str]:
-    """
-    Replace the contents of core memory. To delete memories, use an empty string for new_content.
-
-    Args:
-        name (str): Section of the memory to be edited (persona or human).
-        old_content (str): String to replace. Must be an exact match.
-        new_content (str): Content to write to the memory. All unicode (including emojis) are supported.
-
-    Returns:
-        Optional[str]: None is always returned as this function does not produce a response.
-    """
-    self.memory.edit_replace(name, old_content, new_content)
-    self.rebuild_memory()
     return None
 
 
