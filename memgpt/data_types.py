@@ -319,7 +319,6 @@ class User:
     def __init__(
         self,
         id: uuid.UUID,
-        default_agent=None,
         # other
     ):
         if id is None:
@@ -327,8 +326,6 @@ class User:
         else:
             self.id = id
         assert isinstance(self.id, uuid.UUID), f"UUID {self.id} must be a UUID type"
-
-        self.default_agent = default_agent
 
 
 class AgentState:
