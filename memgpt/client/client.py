@@ -8,11 +8,11 @@ from memgpt.server.server import SyncServer
 from memgpt.metadata import MetadataStore
 
 
-def create_client() -> "MemGPTClient":
-    return MemGPTClient()
+def create_client() -> "Client":
+    return Client()
 
 
-class MemGPTClient:
+class Client:
     def __init__(
         self,
         auto_save: bool = False,
