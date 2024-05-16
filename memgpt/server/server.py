@@ -7,6 +7,7 @@ from typing import Union, Callable, Optional
 from fastapi import HTTPException
 
 import memgpt.constants as constants
+from memgpt.server.rest_api.interface import QueuingInterface
 import memgpt.system as system
 from memgpt.agent import Agent, save_agent
 
@@ -19,9 +20,7 @@ from memgpt.data_types import (
     Message,
     Preset,
 )
-from memgpt.interface import AgentInterface  # abstract
 
-from memgpt.interface import CLIInterface  # for printing to terminal
 from memgpt.metadata import MetadataStore
 
 logger = logging.getLogger(__name__)
@@ -68,16 +67,11 @@ class SyncServer:
 
     def __init__(
         self,
-        default_interface: AgentInterface = CLIInterface(),
     ):
         """Server process holds in-memory agents that are being run"""
 
         # List of {'user_id': user_id, 'agent_id': agent_id, 'agent': agent_obj} dicts
         self.active_agents = []
-
-        # The default interface that will get assigned to agents ON LOAD
-        # self.default_interface_cls = default_interface_cls
-        self.default_interface = default_interface
 
         # Initialize the connection to the DB
         self.config = MemGPTConfig.load()
@@ -134,14 +128,10 @@ class SyncServer:
             }
         )
 
-    def _load_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID, interface: Union[AgentInterface, None] = None) -> Agent:
+    def _load_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID, interface: QueuingInterface = QueuingInterface()) -> Agent:
         """Loads a saved agent into memory (if it doesn't exist, throw an error)"""
         assert isinstance(user_id, uuid.UUID), user_id
         assert isinstance(agent_id, uuid.UUID), agent_id
-
-        # If an interface isn't specified, use the default
-        if interface is None:
-            interface = self.default_interface
 
         try:
             logger.info(f"Grabbing agent user_id={user_id} agent_id={agent_id} from database")
@@ -244,7 +234,6 @@ class SyncServer:
         # Run the agent state forward
         self._step(user_id=user_id, agent_id=agent_id, input_message=packaged_user_message)
 
-
     @agent_lock_decorator
     def system_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> None:
         """Process an incoming system message and feed it through the MemGPT agent"""
@@ -291,27 +280,16 @@ class SyncServer:
         human: Optional[str] = None,
         llm_config: Optional[LLMConfig] = None,
         embedding_config: Optional[EmbeddingConfig] = None,
-        interface: Union[AgentInterface, None] = None,
+        interface: QueuingInterface = QueuingInterface(),
     ) -> AgentState:
         """Create a new agent using a config"""
         if self.ms.get_user(user_id=user_id) is None:
             raise ValueError(f"User user_id={user_id} does not exist")
 
-        if interface is None:
-            # interface = self.default_interface_cls()
-            interface = self.default_interface
-
-        # if persistence_manager is None:
-        # persistence_manager = self.default_persistence_manager_cls(agent_config=agent_config)
-
         logger.debug(f"Attempting to find user: {user_id}")
         user = self.ms.get_user(user_id=user_id)
         if not user:
             raise ValueError(f"cannot find user with associated client id: {user_id}")
-
-        # NOTE: you MUST add to the metadata store before creating the agent, otherwise the storage connectors will error on creation
-        # TODO: fix this db dependency and remove
-        # self.ms.create_agent(agent_state)
 
         try:
             preset_obj = self.ms.get_preset(preset_name=preset if preset else self.config.preset, user_id=user_id)

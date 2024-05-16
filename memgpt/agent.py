@@ -6,8 +6,8 @@ from typing import List, Tuple, cast, Union
 from memgpt.metadata import MetadataStore
 from memgpt.data_types import AgentState, Message, LLMConfig, EmbeddingConfig, Preset
 from memgpt.models import chat_completion_response
-from memgpt.interface import AgentInterface
 from memgpt.persistence_manager import PersistenceManager
+from memgpt.server.rest_api.interface import QueuingInterface
 from memgpt.system import get_login_event, package_function_response, package_summarize_message, get_initial_boot_messages
 from memgpt.memory import InContextMemory, summarize_messages
 from memgpt.llm_api_tools import create, is_context_overflow_error
@@ -89,7 +89,7 @@ class Agent(object):
     @classmethod
     def initialize_with_configs(
         cls,
-        interface: AgentInterface,
+        interface: QueuingInterface,
         preset: Preset,
         created_by: uuid.UUID,
         name: str,
@@ -120,7 +120,7 @@ class Agent(object):
 
     def __init__(
         self,
-        interface: AgentInterface,
+        interface: QueuingInterface,
         agent_state: AgentState,
     ):
 

@@ -1,10 +1,7 @@
 import queue
 
 
-from memgpt.interface import AgentInterface
-
-
-class QueuingInterface(AgentInterface):
+class QueuingInterface:
     """Messages are queued inside an internal buffer and manually flushed"""
 
     def __init__(self, debug=True):
