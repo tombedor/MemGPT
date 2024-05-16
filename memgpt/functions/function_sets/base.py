@@ -19,7 +19,7 @@ def send_message(self, message: str) -> Optional[str]:
     Returns:
         Optional[str]: None is always returned as this function does not produce a response.
     """
-    self.interface.assistant_message(message)
+
     return None
 
 

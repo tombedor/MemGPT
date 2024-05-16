@@ -7,7 +7,6 @@ from typing import Union, Callable, Optional
 from fastapi import HTTPException
 
 import memgpt.constants as constants
-from memgpt.server.rest_api.interface import QueuingInterface
 import memgpt.system as system
 from memgpt.agent import Agent, save_agent
 
@@ -68,7 +67,6 @@ class SyncServer:
     def __init__(
         self,
     ):
-        """Server process holds in-memory agents that are being run"""
 
         # List of {'user_id': user_id, 'agent_id': agent_id, 'agent': agent_obj} dicts
         self.active_agents = []
@@ -94,16 +92,6 @@ class SyncServer:
         # Initialize the metadata store
         self.ms = MetadataStore()
 
-    def save_agents(self):
-        """Saves all the agents that are in the in-memory object store"""
-        for agent_d in self.active_agents:
-            try:
-                # agent_d["agent"].save()
-                save_agent(agent_d["agent"], self.ms)
-                logger.info(f"Saved agent {agent_d['agent_id']}")
-            except Exception as e:
-                logger.exception(f"Error occurred while trying to save agent {agent_d['agent_id']}:\n{e}")
-
     def _get_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID) -> Union[Agent, None]:
         """Get the agent object from the in-memory object store"""
         for d in self.active_agents:
@@ -128,7 +116,7 @@ class SyncServer:
             }
         )
 
-    def _load_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID, interface: QueuingInterface = QueuingInterface()) -> Agent:
+    def _load_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
         """Loads a saved agent into memory (if it doesn't exist, throw an error)"""
         assert isinstance(user_id, uuid.UUID), user_id
         assert isinstance(agent_id, uuid.UUID), agent_id
@@ -143,7 +131,7 @@ class SyncServer:
 
             # Instantiate an agent object using the state retrieved
             logger.info(f"Creating an agent object")
-            memgpt_agent = Agent(agent_state=agent_state, interface=interface)
+            memgpt_agent = Agent(agent_state=agent_state)
 
             # Add the agent to the in-memory store and return its reference
             logger.info(f"Adding agent to the agent cache: user_id={user_id}, agent_id={agent_id}")
@@ -163,7 +151,7 @@ class SyncServer:
             memgpt_agent = self._load_agent(user_id=user_id, agent_id=agent_id)
         return memgpt_agent
 
-    def _step(self, user_id: uuid.UUID, agent_id: uuid.UUID, input_message: Union[str, Message]) -> int:
+    def _step(self, user_id: uuid.UUID, agent_id: uuid.UUID, input_message: Union[str, Message]) -> Message:
         """Send the input message through the agent"""
 
         logger.debug(f"Got input message: {input_message}")
@@ -177,7 +165,7 @@ class SyncServer:
         next_input_message = input_message
         counter = 0
         while True:
-            new_messages, heartbeat_request, function_failed, token_warning, tokens_accumulated = memgpt_agent.step(next_input_message)
+            step_response = memgpt_agent.step(next_input_message)
             counter += 1
 
             # Chain stops
@@ -185,77 +173,37 @@ class SyncServer:
                 logger.debug(f"Hit max chaining steps, stopping after {counter} steps")
                 break
             # Chain handlers
-            elif token_warning:
+            elif step_response.active_memory_warning:
                 next_input_message = system.get_token_limit_warning()
                 continue  # always chain
-            elif function_failed:
+            elif step_response.function_failed:
                 next_input_message = system.get_heartbeat(constants.FUNC_FAILED_HEARTBEAT_MESSAGE)
                 continue  # always chain
-            elif heartbeat_request:
+            elif step_response.heartbeat_request:
                 next_input_message = system.get_heartbeat(constants.REQ_HEARTBEAT_MESSAGE)
                 continue  # always chain
             # MemGPT no-op / yield
             else:
                 break
 
-        memgpt_agent.interface.step_yield()
-        logger.debug(f"Finished agent step")
-
-        return tokens_accumulated
+        save_agent(memgpt_agent, self.ms)
+        return memgpt_agent._messages[-1]
 
     @agent_lock_decorator
-    def user_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: Union[str, Message]) -> None:
+    def user_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> Message:
         """Process an incoming user message and feed it through the MemGPT agent"""
-        if self.ms.get_user(user_id=user_id) is None:
-            raise ValueError(f"User user_id={user_id} does not exist")
-        if self.ms.get_agent(agent_id=agent_id, user_id=user_id) is None:
-            raise ValueError(f"Agent agent_id={agent_id} does not exist")
 
         # Basic input sanitization
-        if isinstance(message, str):
-            if len(message) == 0:
-                raise ValueError(f"Invalid input: '{message}'")
-
-            # If the input begins with a command prefix, reject
-            elif message.startswith("/"):
-                raise ValueError(f"Invalid input: '{message}'")
-            packaged_user_message = system.package_user_message(user_message=message)
-        elif isinstance(message, Message):
-            if len(message.text) == 0:
-                raise ValueError(f"Invalid input: '{message.text}'")
-
-            # If the input begins with a command prefix, reject
-            elif message.text.startswith("/"):
-                raise ValueError(f"Invalid input: '{message.text}'")
-            packaged_user_message = message
-        else:
-            raise ValueError(f"Invalid input: '{message}'")
-
-        # Run the agent state forward
-        self._step(user_id=user_id, agent_id=agent_id, input_message=packaged_user_message)
-
-    @agent_lock_decorator
-    def system_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> None:
-        """Process an incoming system message and feed it through the MemGPT agent"""
-        if self.ms.get_user(user_id=user_id) is None:
-            raise ValueError(f"User user_id={user_id} does not exist")
-        if self.ms.get_agent(agent_id=agent_id, user_id=user_id) is None:
-            raise ValueError(f"Agent agent_id={agent_id} does not exist")
-
-        # Basic input sanitization
-        if not isinstance(message, str) or len(message) == 0:
+        if len(message) == 0:
             raise ValueError(f"Invalid input: '{message}'")
 
         # If the input begins with a command prefix, reject
         elif message.startswith("/"):
             raise ValueError(f"Invalid input: '{message}'")
+        packaged_user_message = system.package_user_message(user_message=message)
 
-        # Else, process it as a user message to be fed to the agent
-        else:
-            # Package the user message first
-            packaged_system_message = system.package_system_message(system_message=message)
-            # Run the agent state forward
-            self._step(user_id=user_id, agent_id=agent_id, input_message=packaged_system_message)
+        # Run the agent state forward
+        return self._step(user_id=user_id, agent_id=agent_id, input_message=packaged_user_message)
 
     def create_user(
         self,
@@ -280,7 +228,6 @@ class SyncServer:
         human: Optional[str] = None,
         llm_config: Optional[LLMConfig] = None,
         embedding_config: Optional[EmbeddingConfig] = None,
-        interface: QueuingInterface = QueuingInterface(),
     ) -> AgentState:
         """Create a new agent using a config"""
         if self.ms.get_user(user_id=user_id) is None:
@@ -303,7 +250,6 @@ class SyncServer:
             embedding_config = embedding_config if embedding_config else self.server_embedding_config
 
             agent = Agent.initialize_with_configs(
-                interface=interface,
                 preset=preset_obj,
                 name=name,
                 created_by=user.id,

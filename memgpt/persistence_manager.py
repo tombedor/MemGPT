@@ -4,7 +4,6 @@ from memgpt.memory import (
     RecallMemory,
     EmbeddingArchivalMemory,
 )
-from memgpt.utils import printd
 from memgpt.data_types import Message, AgentState
 
 

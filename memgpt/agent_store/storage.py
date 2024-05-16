@@ -292,7 +292,7 @@ class StorageConnector:
 
         # Convert the results into Passage objects
         records = [result.to_record() for result in results]
-        return records
+        return records  # type: ignore
 
     def query_date(self, start_date, end_date, offset=0, limit=None):
         filters = self.get_filters({})
