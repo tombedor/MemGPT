@@ -15,7 +15,7 @@ import tiktoken
 from memgpt.constants import (
     JSON_LOADS_STRICT,
     FUNCTION_RETURN_CHAR_LIMIT,
-    CLI_WARNING_PREFIX,
+    WARNING_PREFIX,
     JSON_ENSURE_ASCII,
 )
 
@@ -166,7 +166,7 @@ def validate_function_response(function_response_string: any, strict: bool = Fal
     # TODO we should change this to a max token limit that's variable based on tokens remaining (or context-window)
     if truncate and len(function_response_string) > FUNCTION_RETURN_CHAR_LIMIT:
         print(
-            f"{CLI_WARNING_PREFIX}function return was over limit ({len(function_response_string)} > {FUNCTION_RETURN_CHAR_LIMIT}) and was truncated"
+            f"{WARNING_PREFIX}function return was over limit ({len(function_response_string)} > {FUNCTION_RETURN_CHAR_LIMIT}) and was truncated"
         )
         function_response_string = f"{function_response_string[:FUNCTION_RETURN_CHAR_LIMIT]}... [NOTE: function output was truncated since it exceeded the character limit ({len(function_response_string)} > {FUNCTION_RETURN_CHAR_LIMIT})]"
 

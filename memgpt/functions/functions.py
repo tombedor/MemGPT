@@ -4,7 +4,7 @@ import inspect
 
 from memgpt.config import MemGPTConfig
 from memgpt.functions.schema_generator import generate_schema
-from memgpt.constants import CLI_WARNING_PREFIX
+from memgpt.constants import WARNING_PREFIX
 
 
 def load_function_set(module):
@@ -38,7 +38,7 @@ def load_all_function_sets():
             module = importlib.import_module(full_module_name)
         except Exception as e:
             # Handle other general exceptions
-            print(f"{CLI_WARNING_PREFIX}skipped loading python module '{full_module_name}': {e}")
+            print(f"{WARNING_PREFIX}skipped loading python module '{full_module_name}': {e}")
             continue
 
         try:

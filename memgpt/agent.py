@@ -27,7 +27,7 @@ from memgpt.constants import (
     CORE_MEMORY_HUMAN_CHAR_LIMIT,
     CORE_MEMORY_PERSONA_CHAR_LIMIT,
     LLM_MAX_TOKENS,
-    CLI_WARNING_PREFIX,
+    WARNING_PREFIX,
     SYSTEM,
 )
 from .errors import LLMError
@@ -350,7 +350,7 @@ class Agent(object):
             heartbeat_request = function_args.pop("request_heartbeat", None)
             if not (isinstance(heartbeat_request, bool) or heartbeat_request is None):
                 printd(
-                    f"{CLI_WARNING_PREFIX}'request_heartbeat' arg parsed was not a bool or None, type={type(heartbeat_request)}, value={heartbeat_request}"
+                    f"{WARNING_PREFIX}'request_heartbeat' arg parsed was not a bool or None, type={type(heartbeat_request)}, value={heartbeat_request}"
                 )
                 heartbeat_request = False
 
@@ -464,7 +464,7 @@ class Agent(object):
                 packed_user_message = None
 
             if len(input_message_sequence) > 1 and input_message_sequence[-1]["role"] != "user":
-                printd(f"{CLI_WARNING_PREFIX}Attempting to run ChatCompletion without user as the last message in the queue")
+                printd(f"{WARNING_PREFIX}Attempting to run ChatCompletion without user as the last message in the queue")
 
             response = self._get_ai_reply(
                 message_sequence=input_message_sequence,
@@ -499,14 +499,14 @@ class Agent(object):
             # We can't do summarize logic properly if context_window is undefined
             if self.agent_state.llm_config.context_window is None:
                 # Fallback if for some reason context_window is missing, just set to the default
-                print(f"{CLI_WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
+                print(f"{WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
                 print(f"{self.agent_state}")
                 self.agent_state.llm_config.context_window = (
                     LLM_MAX_TOKENS[self.model] if (self.model is not None and self.model in LLM_MAX_TOKENS) else LLM_MAX_TOKENS["DEFAULT"]
                 )
             if current_total_tokens > MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window):
                 printd(
-                    f"{CLI_WARNING_PREFIX}last response total_tokens ({current_total_tokens}) > {MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window)}"
+                    f"{WARNING_PREFIX}last response total_tokens ({current_total_tokens}) > {MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window)}"
                 )
                 # Only deliver the alert if we haven't already (this period)
                 if not self.agent_alerted_about_memory_pressure:
@@ -550,7 +550,7 @@ class Agent(object):
         system_message.id = uuid.uuid4()
         self.persistence_manager.persist_messages([system_message])
         self._messages[0] = system_message
-        save_agent(self, MetadataStore())
+        save_agent(self)
 
     def summarize_messages_inplace(self):
         assert self.messages[0]["role"] == "system", f"self.messages[0] should be system (instead got {self.messages[0]})"
@@ -619,7 +619,7 @@ class Agent(object):
         # We can't do summarize logic properly if context_window is undefined
         if self.agent_state.llm_config.context_window is None:
             # Fallback if for some reason context_window is missing, just set to the default
-            print(f"{CLI_WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
+            print(f"{WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
             print(f"{self.agent_state}")
             self.agent_state.llm_config.context_window = (
                 LLM_MAX_TOKENS[self.model] if (self.model is not None and self.model in LLM_MAX_TOKENS) else LLM_MAX_TOKENS["DEFAULT"]
@@ -648,6 +648,7 @@ class Agent(object):
 
         # reset alert
         self.agent_alerted_about_memory_pressure = False
+        save_agent(self)
 
         printd(f"Ran summarizer, messages length {prior_len} -> {len(self.messages)}")
 
@@ -672,8 +673,9 @@ class Agent(object):
         return self.agent_state
 
 
-def save_agent(agent: Agent, ms: MetadataStore):
+def save_agent(agent: Agent):
     """Save agent to metadata store"""
+    ms = MetadataStore()
 
     agent.update_state()
     agent_state = agent.agent_state

@@ -186,7 +186,7 @@ class SyncServer:
             else:
                 break
 
-        save_agent(memgpt_agent, self.ms)
+        save_agent(memgpt_agent)
         return memgpt_agent._messages
 
     @agent_lock_decorator
@@ -256,7 +256,7 @@ class SyncServer:
                 llm_config=llm_config,
                 embedding_config=embedding_config,
             )
-            save_agent(agent=agent, ms=self.ms)
+            save_agent(agent)
 
         except Exception as e:
             logger.exception(e)
@@ -266,7 +266,7 @@ class SyncServer:
                 logger.exception(f"Failed to delete_agent:\n{delete_e}")
             raise e
 
-        save_agent(agent, self.ms)
+        save_agent(agent)
 
         logger.info(f"Created new agent from config: {agent}")
 

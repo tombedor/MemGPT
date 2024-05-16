@@ -32,7 +32,7 @@ LOGGER_NAME = "MemGPT"
 LOGGER_DEFAULT_LEVEL = CRITICAL
 
 
-CLI_WARNING_PREFIX = "Warning: "
+WARNING_PREFIX = "Warning: "
 
 NON_USER_MSG_PREFIX = "[This is an automated system message hidden from the user] "
 

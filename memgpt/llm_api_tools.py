@@ -4,7 +4,7 @@ import requests
 import time
 import urllib
 
-from memgpt.constants import CLI_WARNING_PREFIX, OPENAI_API_KEY
+from memgpt.constants import WARNING_PREFIX, OPENAI_API_KEY
 from memgpt.models.chat_completion_response import ChatCompletionResponse
 
 from memgpt.data_types import AgentState
@@ -147,7 +147,7 @@ def retry_with_exponential_backoff(
                     # Sleep for the delay
                     # printd(f"Got a rate limit error ('{http_err}') on LLM backend request, waiting {int(delay)}s then retrying...")
                     print(
-                        f"{CLI_WARNING_PREFIX}Got a rate limit error ('{http_err}') on LLM backend request, waiting {int(delay)}s then retrying..."
+                        f"{WARNING_PREFIX}Got a rate limit error ('{http_err}') on LLM backend request, waiting {int(delay)}s then retrying..."
                     )
                     time.sleep(delay)
                 else:
