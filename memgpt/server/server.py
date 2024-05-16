@@ -2,7 +2,7 @@ import logging
 import uuid
 from functools import wraps
 from threading import Lock
-from typing import Union, Callable, Optional
+from typing import List, Union, Callable, Optional
 
 from fastapi import HTTPException
 
@@ -151,7 +151,7 @@ class SyncServer:
             memgpt_agent = self._load_agent(user_id=user_id, agent_id=agent_id)
         return memgpt_agent
 
-    def _step(self, user_id: uuid.UUID, agent_id: uuid.UUID, input_message: Union[str, Message]) -> Message:
+    def _step(self, user_id: uuid.UUID, agent_id: uuid.UUID, input_message: Union[str, Message]) -> List[Message]:
         """Send the input message through the agent"""
 
         logger.debug(f"Got input message: {input_message}")
@@ -187,10 +187,10 @@ class SyncServer:
                 break
 
         save_agent(memgpt_agent, self.ms)
-        return memgpt_agent._messages[-1]
+        return memgpt_agent._messages
 
     @agent_lock_decorator
-    def user_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> Message:
+    def user_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> List[Message]:
         """Process an incoming user message and feed it through the MemGPT agent"""
 
         # Basic input sanitization
