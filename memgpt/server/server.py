@@ -244,13 +244,6 @@ class SyncServer:
         # Run the agent state forward
         self._step(user_id=user_id, agent_id=agent_id, input_message=packaged_user_message)
 
-    def set_initial_system_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> None:
-        """Updates the system message at the start of the conversation"""
-        raise NotImplementedError
-
-    def get_initial_system_message(self, user_id: uuid.UUID, agent_id: uuid.UUID) -> str:
-        """Get the system message at the start of the conversation"""
-        raise NotImplementedError
 
     @agent_lock_decorator
     def system_message(self, user_id: uuid.UUID, agent_id: uuid.UUID, message: str) -> None:

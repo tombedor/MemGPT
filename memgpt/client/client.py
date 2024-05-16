@@ -15,16 +15,13 @@ def create_client() -> "Client":
 class Client:
     def __init__(
         self,
-        auto_save: bool = False,
         user_id: Optional[str] = None,
         debug: bool = False,
     ):
         """
         Initializes a new instance of Client class.
-        :param auto_save: indicates whether to automatically save after every message.
         :param debug: indicates whether to display debug messages.
         """
-        self.auto_save = auto_save
 
         # determine user_id (pulled from local config)
         config = MemGPTConfig.load()
@@ -89,10 +86,8 @@ class Client:
     def user_message(self, agent_id: str, message: str) -> Union[List[Dict], Tuple[List[Dict], int]]:  # type: ignore
         self.interface.clear()
         self.server.user_message(user_id=self.user_id, agent_id=agent_id, message=message)
-        if self.auto_save:
-            self.save()
-        else:
-            return self.interface.to_list()
+        self.save()
+        return self.interface.to_list()
 
     def save(self):
         self.server.save_agents()

@@ -150,21 +150,18 @@ class PresetModel(Base):
             human=self.human,  # type: ignore
             created_at=self.created_at,  # type: ignore
         )
-
+Base.metadata.create_all(
+    ENGINE,
+    tables=[
+        UserModel.__table__,
+        AgentModel.__table__,
+        PresetModel.__table__,
+        HumanModel.__table__,
+        PersonaModel.__table__,
+    ],
+)
 
 class MetadataStore:
-    def __init__(self):
-        Base.metadata.create_all(
-            ENGINE,
-            tables=[
-                UserModel.__table__,
-                AgentModel.__table__,
-                PresetModel.__table__,
-                HumanModel.__table__,
-                PersonaModel.__table__,
-            ],
-        )
-
     @enforce_types
     def create_agent(self, agent: AgentState):
         # insert into agent table
