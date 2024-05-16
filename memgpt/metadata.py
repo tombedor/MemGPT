@@ -150,6 +150,8 @@ class PresetModel(Base):
             human=self.human,  # type: ignore
             created_at=self.created_at,  # type: ignore
         )
+
+
 Base.metadata.create_all(
     ENGINE,
     tables=[
@@ -160,6 +162,7 @@ Base.metadata.create_all(
         PersonaModel.__table__,
     ],
 )
+
 
 class MetadataStore:
     @enforce_types

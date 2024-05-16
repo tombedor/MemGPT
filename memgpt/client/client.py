@@ -40,7 +40,7 @@ class Client:
             ms.create_user(self.user)
 
         self.interface = QueuingInterface(debug=debug)
-        self.server = SyncServer(default_interface=self.interface)
+        self.server = SyncServer()
 
     def list_agents(self):
         self.interface.clear()
