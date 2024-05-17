@@ -180,8 +180,6 @@ class ArchivalMemoryModel(Base):
 class StorageConnector:
     """Defines a DB connection that is user-specific to access data: Documents, Passages, Archival/Recall Memory"""
 
-    # must run: CREATE EXTENSION IF NOT EXISTS vector
-
     type: Type[Record]
 
     def __init__(

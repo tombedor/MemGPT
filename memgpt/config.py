@@ -1,6 +1,5 @@
 import os
 from typing import Set
-import uuid
 from dataclasses import dataclass, field
 import configparser
 
@@ -8,7 +7,7 @@ import memgpt
 
 import memgpt.functions.function_sets.base
 
-from memgpt.constants import DEFAULT_HUMAN, DEFAULT_PERSONA, DEFAULT_PRESET
+from memgpt.constants import DEFAULT_HUMAN, DEFAULT_PRESET
 from memgpt.data_types import LLMConfig, EmbeddingConfig
 
 
@@ -24,14 +23,10 @@ def get_field(config, section, field):
 
 @dataclass
 class MemGPTConfig:
-    config_path: str = os.environ["MEMGPT_CONFIG_PATH"]
-    anon_clientid: str = str(uuid.UUID(int=0))
-
     # preset
     preset: str = DEFAULT_PRESET
 
     # persona parameters
-    persona: str = DEFAULT_PERSONA
     human: str = DEFAULT_HUMAN
 
     # model parameters
@@ -49,7 +44,7 @@ class MemGPTConfig:
         config = configparser.ConfigParser()
 
         # set by env var
-        config_path = cls.config_path
+        config_path = os.environ["MEMGPT_CONFIG_PATH"]
 
         # insure all configuration directories exist
         if not os.path.exists(config_path):
@@ -102,12 +97,9 @@ class MemGPTConfig:
             "default_embedding_config": embedding_config,
             # Agent related
             "preset": get_field(config, "defaults", "preset"),
-            "persona": get_field(config, "defaults", "persona"),
             "human": get_field(config, "defaults", "human"),
-            "agent": get_field(config, "defaults", "agent"),
             # Storage related
             # Misc
-            "anon_clientid": get_field(config, "client", "anon_clientid"),
             "functions_modules": function_modules,
         }
 

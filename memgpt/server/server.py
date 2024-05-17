@@ -54,12 +54,9 @@ class SyncServer:
 
             try:
                 # Execute the function
-                # logger.info(f"running function on agent_id = {agent_id}")
-                print("USERID", user_id)
                 return func(self, user_id, agent_id, *args, **kwargs)
             finally:
                 # Release the lock
-                # logger.info(f"releasing lock on agent_id = {agent_id}")
                 self._agent_locks[agent_id].release()
 
         return wrapper
@@ -73,7 +70,6 @@ class SyncServer:
 
         # Initialize the connection to the DB
         self.config = MemGPTConfig.load()
-        assert self.config.persona is not None, "Persona must be set in the config"
         assert self.config.human is not None, "Human must be set in the config"
 
         self.server_llm_config = LLMConfig(
