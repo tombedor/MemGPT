@@ -1,5 +1,7 @@
 """ This module contains the data types used by MemGPT. Each data type must include a function to create a DB model. """
 
+import json
+import logging
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, TypeVar
@@ -162,6 +164,31 @@ class Message(Record):
             tool_calls=tool_calls,
             tool_call_id=openai_message_dict["tool_call_id"] if "tool_call_id" in openai_message_dict else None,
         )
+
+    def readable_message(self) -> Optional[str]:
+        if self.role == "user":
+            self_text_d = json.loads(self.text)
+            if self_text_d.get("type") in ["login", "heartbeat"]:
+                return None
+            else:
+                return self_text_d["message"]
+
+        elif self.role == "tool":
+            return None
+        elif self.role == "assistant":
+            if self.tool_calls:
+                for tool_call in self.tool_calls:
+                    if tool_call.function["name"] == "send_message":
+                        try:
+                            return json.loads(tool_call.function["arguments"], strict=False)["message"]
+                        except json.JSONDecodeError:
+                            logging.warning("Could not decode JSON, returning raw response.")
+                            return tool_call.function["arguments"]
+            elif "system alert" in self.text:
+                pass
+            else:
+                logging.warning(f"Unexpected assistant message: {self}")
+                pass
 
     def to_openai_dict(self):
         """Go from Message class to ChatCompletion message object"""
