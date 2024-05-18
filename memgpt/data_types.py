@@ -190,6 +190,9 @@ class Message(Record):
                 logging.warning(f"Unexpected assistant message: {self}")
                 pass
 
+    def is_system_status_message(self) -> bool:
+        return self.readable_message() is None
+
     def to_openai_dict(self):
         """Go from Message class to ChatCompletion message object"""
 
