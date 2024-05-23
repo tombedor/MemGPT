@@ -5,7 +5,7 @@ from typing import Optional, List
 
 from memgpt.constants import ENGINE, SESSION_MAKER
 from memgpt.utils import enforce_types
-from memgpt.data_types import AgentState, User, LLMConfig, EmbeddingConfig, Preset
+from memgpt.data_types import AgentState, User, Preset
 from memgpt.agent_store.storage import Base
 
 from memgpt.models.pydantic_models import PersonaModel, HumanModel
@@ -30,46 +30,6 @@ class CommonUUID(TypeDecorator):
         return value
 
     def process_result_value(self, value, dialect):
-        return value
-
-
-class LLMConfigColumn(TypeDecorator):
-    """Custom type for storing LLMConfig as JSON"""
-
-    impl = JSON
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        return dialect.type_descriptor(JSON())
-
-    def process_bind_param(self, value, dialect):
-        if value:
-            return vars(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value:
-            return LLMConfig(**value)
-        return value
-
-
-class EmbeddingConfigColumn(TypeDecorator):
-    """Custom type for storing EmbeddingConfig as JSON"""
-
-    impl = JSON
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        return dialect.type_descriptor(JSON())
-
-    def process_bind_param(self, value, dialect):
-        if value:
-            return vars(value)
-        return value
-
-    def process_result_value(self, value, dialect):
-        if value:
-            return EmbeddingConfig(**value)
         return value
 
 
@@ -102,10 +62,6 @@ class AgentModel(Base):
     preset = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    # configs
-    llm_config = Column(LLMConfigColumn)
-    embedding_config = Column(EmbeddingConfigColumn)
-
     # state
     state = Column(JSON)
 
@@ -114,14 +70,12 @@ class AgentModel(Base):
 
     def to_record(self) -> AgentState:
         return AgentState(
-            id=self.id,
-            user_id=self.user_id,
-            name=self.name,
-            human=self.human,
-            created_at=self.created_at,
-            llm_config=self.llm_config,
-            embedding_config=self.embedding_config,
-            state=self.state,
+            id=self.id,  # type: ignore
+            user_id=self.user_id,  # type: ignore
+            name=self.name,  # type: ignore
+            human=self.human,  # type: ignore
+            created_at=self.created_at,  # type: ignore
+            state=self.state,  # type: ignore
         )
 
 

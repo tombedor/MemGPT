@@ -46,26 +46,7 @@ SYSTEM = """Persona-driven interaction: Real person mimicry; no AI identity; avo
  Directive: Persona immersion post-base instructions."""
 
 # Constants to do with summarization / conversation length window
-# The max amount of tokens supported by the underlying model (eg 8k for gpt-4 and Mistral 7B)
-LLM_MAX_TOKENS = {
-    "DEFAULT": 8192,
-    ## OpenAI models: https://platform.openai.com/docs/models/overview
-    # gpt-4
-    "gpt-4-1106-preview": 128000,
-    "gpt-4": 8192,
-    "gpt-4-32k": 32768,
-    "gpt-4-0613": 8192,
-    "gpt-4-32k-0613": 32768,
-    "gpt-4-0314": 8192,  # legacy
-    "gpt-4-32k-0314": 32768,  # legacy
-    # gpt-3.5
-    "gpt-3.5-turbo-1106": 16385,
-    "gpt-3.5-turbo": 4096,
-    "gpt-3.5-turbo-16k": 16385,
-    "gpt-3.5-turbo-0613": 4096,  # legacy
-    "gpt-3.5-turbo-16k-0613": 16385,  # legacy
-    "gpt-3.5-turbo-0301": 4096,  # legacy
-}
+
 # The amount of tokens before a sytem warning about upcoming truncation is sent to MemGPT
 MESSAGE_SUMMARY_WARNING_FRAC = 0.75
 # The error message that MemGPT will receive

@@ -5,8 +5,9 @@ from typing import List, cast, Union
 
 from attr import dataclass
 
+from memgpt.config import MemGPTConfig
 from memgpt.metadata import MetadataStore
-from memgpt.data_types import AgentState, Message, LLMConfig, EmbeddingConfig, Preset
+from memgpt.data_types import AgentState, Message, Preset
 from memgpt.models import chat_completion_response
 from memgpt.persistence_manager import PersistenceManager
 from memgpt.system import get_login_event, package_function_response, package_summarize_message, get_initial_boot_messages
@@ -26,7 +27,6 @@ from memgpt.constants import (
     MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST,
     CORE_MEMORY_HUMAN_CHAR_LIMIT,
     CORE_MEMORY_PERSONA_CHAR_LIMIT,
-    LLM_MAX_TOKENS,
     WARNING_PREFIX,
     SYSTEM,
 )
@@ -93,13 +93,9 @@ class Agent(object):
         preset: Preset,
         created_by: uuid.UUID,
         name: str,
-        llm_config: LLMConfig,
-        embedding_config: EmbeddingConfig,
     ):
 
         assert created_by is not None, "Must provide created_by field when creating an Agent from a Preset"
-        assert llm_config is not None, "Must provide llm_config field when creating an Agent from a Preset"
-        assert embedding_config is not None, "Must provide embedding_config field when creating an Agent from a Preset"
         assert name is not None, "must proide agent name"
 
         # if agent_state is also provided, override any preset values
@@ -107,8 +103,6 @@ class Agent(object):
             name=name,
             user_id=created_by,
             human=preset.human,
-            llm_config=llm_config,
-            embedding_config=embedding_config,
             state={
                 "persona": DEFAULT_PERSONA,
                 "human": preset.human,
@@ -131,9 +125,6 @@ class Agent(object):
 
         # Hold a copy of the state that was used to init the agent
         self.agent_state = init_agent_state
-
-        # gpt-4, gpt-3.5-turbo, ...
-        self.model = self.agent_state.llm_config.model
 
         all_functions = load_all_function_sets()
         self.functions = [fs["json_schema"] for fs in all_functions.values()]
@@ -176,7 +167,7 @@ class Agent(object):
             for msg in init_messages:
                 init_messages_objs.append(
                     Message.dict_to_message(
-                        agent_id=self.agent_state.id, user_id=self.agent_state.user_id, model=self.model, openai_message_dict=msg
+                        agent_id=self.agent_state.id, user_id=self.agent_state.user_id, model=MemGPTConfig.model, openai_message_dict=msg
                     )
                 )
             assert all([isinstance(msg, Message) for msg in init_messages_objs]), (init_messages_objs, init_messages)
@@ -273,7 +264,7 @@ class Agent(object):
                 Message.dict_to_message(
                     agent_id=self.agent_state.id,
                     user_id=self.agent_state.user_id,
-                    model=self.model,
+                    model=MemGPTConfig.model,
                     openai_message_dict=response_message.model_dump(),
                 )
             )  # extend conversation with assistant's reply
@@ -295,7 +286,6 @@ class Agent(object):
                     Message.dict_to_message(
                         agent_id=self.agent_state.id,
                         user_id=self.agent_state.user_id,
-                        model=self.model,
                         openai_message_dict={
                             "role": "tool",
                             "name": function_name,
@@ -319,7 +309,7 @@ class Agent(object):
                     Message.dict_to_message(
                         agent_id=self.agent_state.id,
                         user_id=self.agent_state.user_id,
-                        model=self.model,
+                        model=MemGPTConfig.model,
                         openai_message_dict={
                             "role": "tool",
                             "name": function_name,
@@ -375,7 +365,7 @@ class Agent(object):
                     Message.dict_to_message(
                         agent_id=self.agent_state.id,
                         user_id=self.agent_state.user_id,
-                        model=self.model,
+                        model=MemGPTConfig.model,
                         openai_message_dict={
                             "role": "tool",
                             "name": function_name,
@@ -394,7 +384,7 @@ class Agent(object):
                 Message.dict_to_message(
                     agent_id=self.agent_state.id,
                     user_id=self.agent_state.user_id,
-                    model=self.model,
+                    model=MemGPTConfig.model,
                     openai_message_dict={
                         "role": "tool",
                         "name": function_name,
@@ -410,7 +400,7 @@ class Agent(object):
                 Message.dict_to_message(
                     agent_id=self.agent_state.id,
                     user_id=self.agent_state.user_id,
-                    model=self.model,
+                    model=MemGPTConfig.model,
                     openai_message_dict=response_message.model_dump(),
                 )
             )  # extend conversation with assistant's reply
@@ -473,7 +463,6 @@ class Agent(object):
                         Message.dict_to_message(
                             agent_id=self.agent_state.id,
                             user_id=self.agent_state.user_id,
-                            model=self.model,
                             openai_message_dict=packed_user_message,  # type: ignore
                         )
                     ] + ai_response.messages
@@ -483,17 +472,10 @@ class Agent(object):
             # Check the memory pressure and potentially issue a memory pressure warning
             current_total_tokens = response.usage.total_tokens
             active_memory_warning = False
-            # We can't do summarize logic properly if context_window is undefined
-            if self.agent_state.llm_config.context_window is None:
-                # Fallback if for some reason context_window is missing, just set to the default
-                print(f"{WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
-                print(f"{self.agent_state}")
-                self.agent_state.llm_config.context_window = (
-                    LLM_MAX_TOKENS[self.model] if (self.model is not None and self.model in LLM_MAX_TOKENS) else LLM_MAX_TOKENS["DEFAULT"]
-                )
-            if current_total_tokens > MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window):
+
+            if current_total_tokens > MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window):  # type: ignore
                 printd(
-                    f"{WARNING_PREFIX}last response total_tokens ({current_total_tokens}) > {MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window)}"
+                    f"{WARNING_PREFIX}last response total_tokens ({current_total_tokens}) > {MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window)}"  # type: ignore
                 )
                 # Only deliver the alert if we haven't already (this period)
                 if not self.agent_alerted_about_memory_pressure:
@@ -501,7 +483,7 @@ class Agent(object):
                     self.agent_alerted_about_memory_pressure = True  # it's up to the outer loop to handle this
             else:
                 printd(
-                    f"last response total_tokens ({current_total_tokens}) < {MESSAGE_SUMMARY_WARNING_FRAC * int(self.agent_state.llm_config.context_window)}"
+                    f"last response total_tokens ({current_total_tokens}) < {MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window)}"  # type: ignore
                 )
 
             self._append_to_messages(all_new_messages)
@@ -603,14 +585,6 @@ class Agent(object):
         else:
             printd(f"Attempting to summarize {len(message_sequence_to_summarize)} messages [1:{cutoff}] of {len(self.messages)}")
 
-        # We can't do summarize logic properly if context_window is undefined
-        if self.agent_state.llm_config.context_window is None:
-            # Fallback if for some reason context_window is missing, just set to the default
-            print(f"{WARNING_PREFIX}could not find context_window in config, setting to default {LLM_MAX_TOKENS['DEFAULT']}")
-            print(f"{self.agent_state}")
-            self.agent_state.llm_config.context_window = (
-                LLM_MAX_TOKENS[self.model] if (self.model is not None and self.model in LLM_MAX_TOKENS) else LLM_MAX_TOKENS["DEFAULT"]
-            )
         summary = summarize_messages(agent_state=self.agent_state, message_sequence_to_summarize=message_sequence_to_summarize)
         printd(f"Got summary: {summary}")
 
@@ -627,7 +601,6 @@ class Agent(object):
                 Message.dict_to_message(
                     agent_id=self.agent_state.id,
                     user_id=self.agent_state.user_id,
-                    model=self.model,
                     openai_message_dict=packed_summary_message,
                 )
             ]
@@ -651,8 +624,6 @@ class Agent(object):
             name=self.agent_state.name,
             user_id=self.agent_state.user_id,
             human=self.agent_state.human,
-            llm_config=self.agent_state.llm_config,
-            embedding_config=self.agent_state.embedding_config,
             id=self.agent_state.id,
             created_at=self.agent_state.created_at,
             state=updated_state,

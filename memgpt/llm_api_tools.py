@@ -4,6 +4,7 @@ import requests
 import time
 import urllib
 
+from memgpt.config import MemGPTConfig
 from memgpt.constants import WARNING_PREFIX, OPENAI_API_KEY
 from memgpt.models.chat_completion_response import ChatCompletionResponse
 
@@ -171,18 +172,18 @@ def create(
     """Return response to chat completion with backoff"""
     from memgpt.utils import printd
 
-    printd(f"Using model {agent_state.llm_config.model_endpoint_type}, endpoint: {agent_state.llm_config.model_endpoint}")
+    printd(f"Using model {MemGPTConfig.model_endpoint_type}, endpoint: {MemGPTConfig.model_endpoint}")
 
     if function_call and not functions:
         printd("unsetting function_call because functions is None")
         function_call = None
 
     # openai
-    if agent_state.llm_config.model_endpoint_type == "openai":
+    if MemGPTConfig.model_endpoint_type == "openai":
         # TODO do the same for Azure?
 
         data = dict(
-            model=agent_state.llm_config.model,
+            model=MemGPTConfig.model,
             messages=messages,
             tools=[{"type": "function", "function": f} for f in functions] if functions else None,
             tool_choice=function_call,
@@ -190,11 +191,11 @@ def create(
         )
 
         return openai_chat_completions_request(
-            url=agent_state.llm_config.model_endpoint,  # https://api.openai.com/v1 -> https://api.openai.com/v1/chat/completions
+            url=MemGPTConfig.model_endpoint,  # https://api.openai.com/v1 -> https://api.openai.com/v1/chat/completions
             api_key=OPENAI_API_KEY,
             data=data,
         )
 
     # local model
     else:
-        raise ValueError(f"Unsupported model endpoint type: {agent_state.llm_config.model_endpoint_type}")
+        raise ValueError(f"Unsupported model endpoint type: {MemGPTConfig.model_endpoint_type}")

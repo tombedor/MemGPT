@@ -33,7 +33,7 @@ def load_function_set(module):
 
 def load_all_function_sets():
     schemas_and_functions = {}
-    for full_module_name in MemGPTConfig.load().functions_modules:
+    for full_module_name in MemGPTConfig.function_modules:
         try:
             module = importlib.import_module(full_module_name)
         except Exception as e:

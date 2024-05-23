@@ -4,7 +4,7 @@ import uuid
 import hashlib
 import inspect
 from functools import wraps
-from typing import get_type_hints, Union, _GenericAlias
+from typing import get_type_hints, Union, _GenericAlias  # type: ignore
 
 
 from urllib.parse import urlparse
@@ -121,13 +121,13 @@ def parse_json(string) -> dict:
 
     try:
         result = demjson.decode(string)
-        return result
+        return result  # type: ignore
     except demjson.JSONDecodeError as e:
         print(f"Error parsing json with demjson package: {e}")
         raise e
 
 
-def validate_function_response(function_response_string: any, strict: bool = False, truncate: bool = True) -> str:
+def validate_function_response(function_response_string: any, strict: bool = False, truncate: bool = True) -> str:  # type: ignore
     """Check to make sure that a function used by MemGPT returned a valid response
 
     Responses need to be strings (or None) that fall under a certain text count limit.
