@@ -120,17 +120,17 @@ class RecallMemoryModel(Base):
         return self.readable_message() is None
 
     def readable_message(self) -> Optional[str]:
-        if self.role == "user":
-            self_text_d = json.loads(self.text)
+        if self.role == "user":  # type: ignore
+            self_text_d = json.loads(self.text)  # type: ignore
             if self_text_d.get("type") in ["login", "heartbeat"]:
                 return None
             else:
                 return self_text_d["message"]
 
-        elif self.role == "tool":
+        elif self.role == "tool":  # type: ignore
             return None
-        elif self.role == "assistant":
-            if self.tool_calls:
+        elif self.role == "assistant":  # type: ignore
+            if self.tool_calls:  # type: ignore
                 for tool_call in self.tool_calls:
                     if tool_call.function["name"] == "send_message":
                         try:

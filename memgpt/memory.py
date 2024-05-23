@@ -1,12 +1,13 @@
 from typing import Optional, List
 
 from memgpt.agent_store.storage import StorageConnector
+from memgpt.config import MemGPTConfig
 from memgpt.constants import MESSAGE_SUMMARY_WARNING_FRAC
 from memgpt.utils import get_local_time, printd, count_tokens
 from memgpt.prompts.gpt_summarize import SYSTEM as SUMMARY_PROMPT_SYSTEM
 from memgpt.llm_api_tools import create
 from memgpt.data_types import Message, Passage, AgentState
-from memgpt.embeddings import embedding_model, query_embedding, parse_and_chunk_text
+from memgpt.embeddings import query_embedding, parse_and_chunk_text
 
 
 class InContextMemory(object):
@@ -35,10 +36,6 @@ class InContextMemory(object):
             "human": self.human,
         }
 
-    @classmethod
-    def load(cls, state):
-        return cls(state["persona"], state["human"])
-
     def edit_persona(self, new_persona):
         if self.persona_char_limit and len(new_persona) > self.persona_char_limit:
             error_msg = f"Edit failed: Exceeds {self.persona_char_limit} character limit (requested {len(new_persona)})."
@@ -66,15 +63,13 @@ def summarize_messages(
 ):
     """Summarize a message sequence using GPT"""
     # we need the context_window
-    context_window = agent_state.llm_config.context_window
-
-    assert context_window
+    context_window = MemGPTConfig.model_context_window
 
     summary_prompt = SUMMARY_PROMPT_SYSTEM
     summary_input = str(message_sequence_to_summarize)
     summary_input_tkns = count_tokens(summary_input)
-    if summary_input_tkns > MESSAGE_SUMMARY_WARNING_FRAC * context_window:
-        trunc_ratio = (MESSAGE_SUMMARY_WARNING_FRAC * context_window / summary_input_tkns) * 0.8  # For good measure...
+    if summary_input_tkns > MESSAGE_SUMMARY_WARNING_FRAC * context_window:  # type: ignore
+        trunc_ratio = (MESSAGE_SUMMARY_WARNING_FRAC * context_window / summary_input_tkns) * 0.8  # For good measure... # type: ignore
         cutoff = int(len(message_sequence_to_summarize) * trunc_ratio)
         summary_input = str(
             [summarize_messages(agent_state, message_sequence_to_summarize=message_sequence_to_summarize[:cutoff])]
@@ -104,23 +99,19 @@ class RecallMemory:
 
         self.agent_state = agent_state
 
-        # create embedding model
-        self.embed_model = embedding_model(agent_state.embedding_config)
-        self.embedding_chunk_size = agent_state.embedding_config.embedding_chunk_size
-
         # create storage backend
         self.storage = StorageConnector.get_recall_storage_connector(user_id=agent_state.user_id, agent_id=agent_state.id)
         # TODO: have some mechanism for cleanup otherwise will lead to OOM
         self.cache = {}
 
     def text_search(self, query_string, count=None, start=None):  # type: ignore
-        results = self.storage.query_text(query_string, count, start)
-        results_json = [message.to_openai_dict() for message in results]
+        results = self.storage.query_text(query_string, count, start)  # type: ignore
+        results_json = [message.to_openai_dict() for message in results]  # type: ignore
         return results_json, len(results)
 
     def date_search(self, start_date, end_date, count=None, start=None):
-        results = self.storage.query_date(start_date, end_date, count, start)
-        results_json = [message.to_openai_dict() for message in results]
+        results = self.storage.query_date(start_date, end_date, count, start)  # type: ignore
+        results_json = [message.to_openai_dict() for message in results]  # type: ignore
         return results_json, len(results)
 
     def insert(self, message: Message):
@@ -148,12 +139,7 @@ class EmbeddingArchivalMemory:
         self.agent_state = agent_state
 
         # create embedding model
-        self.embed_model = embedding_model(agent_state.embedding_config)
-        self.embedding_chunk_size = agent_state.embedding_config.embedding_chunk_size
-        assert self.embedding_chunk_size, f"Must set {agent_state.embedding_config.embedding_chunk_size}"
-
         # create storage backend
-        # TODO: have some mechanism for cleanup otherwise will lead to OOM
         self.cache = {}
 
     def create_passage(self, text, embedding):
@@ -162,8 +148,8 @@ class EmbeddingArchivalMemory:
             agent_id=self.agent_state.id,
             text=text,
             embedding=embedding,
-            embedding_dim=self.agent_state.embedding_config.embedding_dim,
-            embedding_model=self.agent_state.embedding_config.embedding_model,
+            embedding_dim=MemGPTConfig.embedding_dim,
+            embedding_model=MemGPTConfig.embedding_model_name,
         )
 
     def insert(self, memory_string):
@@ -174,15 +160,16 @@ class EmbeddingArchivalMemory:
 
         try:
             passages = []
+            embedding_model = MemGPTConfig.embedding_model
 
             # breakup string into passages
-            for text in parse_and_chunk_text(memory_string, self.embedding_chunk_size):  # type: ignore
-                embedding = self.embed_model.get_text_embedding(text)
+            for text in parse_and_chunk_text(memory_string):  # type: ignore
+                embedding = embedding_model.get_text_embedding(text)
                 # fixing weird bug where type returned isn't a list, but instead is an object
                 # eg: embedding={'object': 'list', 'data': [{'object': 'embedding', 'embedding': [-0.0071973633, -0.07893023,
                 if isinstance(embedding, dict):
                     try:
-                        embedding = embedding["data"][0]["embedding"]
+                        embedding = embedding["data"][0]["embedding"]  # type: ignore
                     except (KeyError, IndexError):
                         # TODO as a fallback, see if we can find any lists in the payload
                         raise TypeError(
@@ -205,7 +192,7 @@ class EmbeddingArchivalMemory:
         try:
             if query_string not in self.cache:
                 # self.cache[query_string] = self.retriever.retrieve(query_string)
-                query_vec = query_embedding(self.embed_model, query_string)
+                query_vec = query_embedding(query_string)
                 self.cache[query_string] = self.storage.query(query_string, query_vec, top_k=self.top_k)  # type: ignore
 
             start = int(start if start else 0)

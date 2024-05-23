@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, TypeVar
 import numpy as np
 
-from memgpt.constants import DEFAULT_HUMAN_TEXT, LLM_MAX_TOKENS, MAX_EMBEDDING_DIM
+from memgpt.constants import DEFAULT_HUMAN_TEXT, MAX_EMBEDDING_DIM
 from memgpt.utils import create_uuid_from_string
 
 from pydantic import BaseModel, Field
@@ -299,48 +299,6 @@ class Passage(Record):
         assert not doc_id or isinstance(self.doc_id, uuid.UUID), f"UUID {self.doc_id} must be a UUID type"
 
 
-class LLMConfig:
-    def __init__(
-        self,
-        model: Optional[str] = "gpt-4",
-        model_endpoint_type: Optional[str] = "openai",
-        model_endpoint: Optional[str] = "https://api.openai.com/v1",
-        model_wrapper: Optional[str] = None,
-        context_window: Optional[int] = None,
-    ):
-        self.model = model
-        self.model_endpoint_type = model_endpoint_type
-        self.model_endpoint = model_endpoint
-        self.model_wrapper = model_wrapper
-        self.context_window = context_window
-
-        if context_window is None:
-            self.context_window = LLM_MAX_TOKENS[self.model] if self.model in LLM_MAX_TOKENS else LLM_MAX_TOKENS["DEFAULT"]
-        else:
-            self.context_window = context_window
-
-
-class EmbeddingConfig:
-    def __init__(
-        self,
-        embedding_endpoint_type: Optional[str] = "openai",
-        embedding_endpoint: Optional[str] = "https://api.openai.com/v1",
-        embedding_model: Optional[str] = "text-embedding-ada-002",
-        embedding_dim: Optional[int] = 1536,
-        embedding_chunk_size: Optional[int] = 300,
-    ):
-        self.embedding_endpoint_type = embedding_endpoint_type
-        self.embedding_endpoint = embedding_endpoint
-        self.embedding_model = embedding_model
-        self.embedding_dim = embedding_dim
-        self.embedding_chunk_size = embedding_chunk_size
-
-        # fields cannot be set to None
-        assert self.embedding_endpoint_type
-        assert self.embedding_dim
-        assert self.embedding_chunk_size
-
-
 class User:
     """Defines user and default configurations"""
 
@@ -364,8 +322,6 @@ class AgentState:
         name: str,
         user_id: uuid.UUID,
         human: str,  # the filename where the human was originally sourced from
-        llm_config: LLMConfig,
-        embedding_config: EmbeddingConfig,
         id: Optional[uuid.UUID] = None,
         state: Optional[dict] = None,
         created_at: Optional[datetime] = None,
@@ -380,9 +336,6 @@ class AgentState:
         self.name = name
         self.user_id = user_id
         self.human = human
-
-        self.llm_config = llm_config
-        self.embedding_config = embedding_config
 
         self.created_at = created_at if created_at is not None else datetime.now()
 

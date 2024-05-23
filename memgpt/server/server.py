@@ -6,16 +6,14 @@ from typing import List, Union, Callable, Optional
 
 from fastapi import HTTPException
 
+from memgpt.config import MemGPTConfig
 import memgpt.constants as constants
 import memgpt.system as system
 from memgpt.agent import Agent, save_agent
 
-from memgpt.config import MemGPTConfig
 from memgpt.data_types import (
     User,
     AgentState,
-    LLMConfig,
-    EmbeddingConfig,
     Message,
     Preset,
 )
@@ -68,23 +66,6 @@ class SyncServer:
         # List of {'user_id': user_id, 'agent_id': agent_id, 'agent': agent_obj} dicts
         self.active_agents = []
 
-        # Initialize the connection to the DB
-        self.config = MemGPTConfig.load()
-        assert self.config.human is not None, "Human must be set in the config"
-
-        self.server_llm_config = LLMConfig(
-            model=self.config.default_llm_config.model,
-            model_endpoint_type=self.config.default_llm_config.model_endpoint_type,
-            model_endpoint=self.config.default_llm_config.model_endpoint,
-            model_wrapper=self.config.default_llm_config.model_wrapper,
-            context_window=self.config.default_llm_config.context_window,
-        )
-        self.server_embedding_config = EmbeddingConfig(
-            embedding_endpoint_type=self.config.default_embedding_config.embedding_endpoint_type,
-            embedding_endpoint=self.config.default_embedding_config.embedding_endpoint,
-            embedding_dim=self.config.default_embedding_config.embedding_dim,
-        )
-
         # Initialize the metadata store
         self.ms = MetadataStore()
 
@@ -118,7 +99,7 @@ class SyncServer:
         assert isinstance(agent_id, uuid.UUID), agent_id
 
         try:
-            logger.info(f"Grabbing agent user_id={user_id} agent_id={agent_id} from database")
+            logger.debug(f"Grabbing agent user_id={user_id} agent_id={agent_id} from database")
             agent_state = self.ms.get_agent(agent_id=agent_id, user_id=user_id)
             if not agent_state:
                 logger.exception(f"agent_id {agent_id} does not exist")
@@ -126,11 +107,11 @@ class SyncServer:
             # print(f"server._load_agent :: load got agent state {agent_id}, messages = {agent_state.state['messages']}")
 
             # Instantiate an agent object using the state retrieved
-            logger.info(f"Creating an agent object")
+            logger.debug(f"Creating an agent object")
             memgpt_agent = Agent(agent_state=agent_state)
 
             # Add the agent to the in-memory store and return its reference
-            logger.info(f"Adding agent to the agent cache: user_id={user_id}, agent_id={agent_id}")
+            logger.debug(f"Adding agent to the agent cache: user_id={user_id}, agent_id={agent_id}")
             self._add_agent(user_id=user_id, agent_id=agent_id, agent_obj=memgpt_agent)
             return memgpt_agent
 
@@ -140,10 +121,10 @@ class SyncServer:
 
     def _get_or_load_agent(self, user_id: uuid.UUID, agent_id: uuid.UUID) -> Agent:
         """Check if the agent is in-memory, then load"""
-        logger.info(f"Checking for agent user_id={user_id} agent_id={agent_id}")
+        logger.debug(f"Checking for agent user_id={user_id} agent_id={agent_id}")
         memgpt_agent = self._get_agent(user_id=user_id, agent_id=agent_id)
         if not memgpt_agent:
-            logger.info(f"Agent not loaded, loading agent user_id={user_id} agent_id={agent_id}")
+            logger.debug(f"Agent not loaded, loading agent user_id={user_id} agent_id={agent_id}")
             memgpt_agent = self._load_agent(user_id=user_id, agent_id=agent_id)
         return memgpt_agent
 
@@ -222,8 +203,6 @@ class SyncServer:
         name: str,
         preset: Optional[str] = None,
         human: Optional[str] = None,
-        llm_config: Optional[LLMConfig] = None,
-        embedding_config: Optional[EmbeddingConfig] = None,
     ) -> AgentState:
         """Create a new agent using a config"""
         if self.ms.get_user(user_id=user_id) is None:
@@ -235,22 +214,17 @@ class SyncServer:
             raise ValueError(f"cannot find user with associated client id: {user_id}")
 
         try:
-            preset_obj = self.ms.get_preset(preset_name=preset if preset else self.config.preset, user_id=user_id)
-            assert preset_obj is not None, f"preset {preset if preset else self.config.preset} does not exist"
+            preset_obj = self.ms.get_preset(preset_name=preset if preset else MemGPTConfig.preset, user_id=user_id)
+            assert preset_obj is not None, f"preset {preset if preset else MemGPTConfig.preset} does not exist"
             logger.debug(f"Attempting to create agent from preset:\n{preset_obj}")
 
             # Overwrite fields in the preset if they were specified
-            preset_obj.human = human if human else self.config.human
-
-            llm_config = llm_config if llm_config else self.server_llm_config
-            embedding_config = embedding_config if embedding_config else self.server_embedding_config
+            preset_obj.human = human if human else MemGPTConfig.human
 
             agent = Agent.initialize_with_configs(
                 preset=preset_obj,
                 name=name,
                 created_by=user.id,
-                llm_config=llm_config,
-                embedding_config=embedding_config,
             )
             save_agent(agent)
 

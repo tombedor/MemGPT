@@ -1,17 +1,16 @@
-import uuid
-from typing import Optional, List, Any
+from typing import List, Any
 import numpy as np
 
+from memgpt.config import MemGPTConfig
 from memgpt.utils import is_valid_url
-from memgpt.data_types import EmbeddingConfig
-from memgpt.constants import MAX_EMBEDDING_DIM, OPENAI_API_KEY
+from memgpt.constants import MAX_EMBEDDING_DIM
 
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core import Document as LlamaIndexDocument
 
 
-def parse_and_chunk_text(text: str, chunk_size: int) -> List[str]:
-    parser = SentenceSplitter(chunk_size=chunk_size)
+def parse_and_chunk_text(text: str) -> List[str]:
+    parser = SentenceSplitter(chunk_size=MemGPTConfig.embedding_chunk_size)
     llama_index_docs = [LlamaIndexDocument(text=text)]
     nodes = parser.get_nodes_from_documents(llama_index_docs)
     return [n.text for n in nodes]  # type: ignore
@@ -82,36 +81,9 @@ class EmbeddingEndpoint:
         return self._call_api(text)
 
 
-def query_embedding(embedding_model, query_text: str):
+def query_embedding(query_text: str):
     """Generate padded embedding for querying database"""
-    query_vec = embedding_model.get_text_embedding(query_text)
+    query_vec = MemGPTConfig.embedding_model.get_text_embedding(query_text)
     query_vec = np.array(query_vec)
     query_vec = np.pad(query_vec, (0, MAX_EMBEDDING_DIM - query_vec.shape[0]), mode="constant").tolist()
     return query_vec
-
-
-def embedding_model(config: EmbeddingConfig, user_id: Optional[uuid.UUID] = None):
-    """Return LlamaIndex embedding model to use for embeddings"""
-
-    endpoint_type = config.embedding_endpoint_type
-
-    if endpoint_type == "openai":
-        from llama_index.embeddings.openai import OpenAIEmbedding
-
-        additional_kwargs = {"user_id": user_id} if user_id else {}
-        model = OpenAIEmbedding(
-            api_base=config.embedding_endpoint,
-            api_key=OPENAI_API_KEY,
-            additional_kwargs=additional_kwargs,
-        )
-        return model
-
-    elif endpoint_type == "hugging-face":
-        return EmbeddingEndpoint(
-            model=config.embedding_model,  # type: ignore
-            base_url=config.embedding_endpoint,  # type: ignore
-            user=user_id,  # type: ignore
-        )
-
-    else:
-        raise ValueError
