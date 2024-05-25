@@ -20,7 +20,7 @@ import uuid
 
 from pgvector.sqlalchemy import Vector
 from memgpt.data_types import Message, Passage, ToolCall, Record, Passage, Message, RecordType
-from memgpt.constants import ENGINE, MAX_EMBEDDING_DIM, SESSION_MAKER
+from memgpt.constants import ENGINE, MAX_EMBEDDING_DIM, NON_USER_MSG_PREFIX, SESSION_MAKER
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.sql import func
@@ -122,7 +122,7 @@ class RecallMemoryModel(Base):
     def readable_message(self) -> Optional[str]:
         if self.role == "user":  # type: ignore
             self_text_d = json.loads(self.text)  # type: ignore
-            if self_text_d.get("type") in ["login", "heartbeat"]:
+            if self_text_d.get("type") in ["login", "heartbeat"] or NON_USER_MSG_PREFIX in self_text_d["message"]:
                 return None
             else:
                 return self_text_d["message"]
