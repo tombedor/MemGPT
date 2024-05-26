@@ -82,7 +82,7 @@ class SyncServer:
         if self._get_agent(user_id=user_id, agent_id=agent_id) is not None:
             # Can be triggered on concucrent request, so don't throw a full error
             # raise KeyError(f"Agent (user={user_id}, agent={agent_id}) is already loaded")
-            logger.exception(f"Agent (user={user_id}, agent={agent_id}) is already loaded")
+            logger.debug(f"Agent (user={user_id}, agent={agent_id}) is already loaded")
             return
         # Add Agent instance to the in-memory list
         self.active_agents.append(
