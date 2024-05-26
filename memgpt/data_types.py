@@ -187,7 +187,7 @@ class Message(Record):
             elif "system alert" in self.text:
                 pass
             else:
-                logging.warning(f"Unexpected assistant message: {self}")
+                logging.warning(f"Unexpected assistant message: role = {self.role}, text = {self.text}")
                 pass
 
     def is_system_status_message(self) -> bool:
