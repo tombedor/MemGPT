@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, TypeVar
 import numpy as np
 
-from memgpt.constants import DEFAULT_HUMAN_TEXT, MAX_EMBEDDING_DIM
+from memgpt.constants import DEFAULT_HUMAN_TEXT, MAX_EMBEDDING_DIM, NON_USER_MSG_PREFIX
 from memgpt.utils import create_uuid_from_string
 
 from pydantic import BaseModel, Field
@@ -168,7 +168,7 @@ class Message(Record):
     def readable_message(self) -> Optional[str]:
         if self.role == "user":
             self_text_d = json.loads(self.text)
-            if self_text_d.get("type") in ["login", "heartbeat"]:
+            if self_text_d.get("type") in ["login", "heartbeat"] and NON_USER_MSG_PREFIX not in self_text_d["message"]:
                 return None
             else:
                 return self_text_d["message"]
