@@ -181,10 +181,6 @@ class Agent(object):
         """Getter method that converts the internal Message list into OpenAI-style dicts"""
         return [msg.to_openai_dict() for msg in self._messages]
 
-    @messages.setter
-    def messages(self, value):
-        raise Exception("Modifying message list directly not allowed")
-
     def _trim_messages(self, num):
         """Trim messages from the front, not including the system message"""
 
