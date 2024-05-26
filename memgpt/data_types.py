@@ -168,7 +168,7 @@ class Message(Record):
     def readable_message(self) -> Optional[str]:
         if self.role == "user":
             self_text_d = json.loads(self.text)
-            if self_text_d.get("type") in ["login", "heartbeat"] and NON_USER_MSG_PREFIX not in self_text_d["message"]:
+            if self_text_d.get("type") in ["login", "heartbeat"] or NON_USER_MSG_PREFIX in self_text_d["message"]:
                 return None
             else:
                 return self_text_d["message"]
