@@ -9,20 +9,6 @@ from memgpt.constants import RETRIEVAL_QUERY_DEFAULT_PAGE_SIZE, JSON_ENSURE_ASCI
 # If the function fails, throw an exception
 
 
-def send_message(self, message: str) -> Optional[str]:
-    """
-    Sends a message to the human user.
-
-    Args:
-        message (str): Message contents. All unicode (including emojis) are supported.
-
-    Returns:
-        Optional[str]: None is always returned as this function does not produce a response.
-    """
-
-    return None
-
-
 def conversation_search(self, query: str, page: Optional[int] = 0) -> Optional[str]:
     """
     Search prior conversation history using case-insensitive string matching.
