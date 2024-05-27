@@ -89,7 +89,12 @@ def openai_chat_completions_request(url, api_key, data):
 
         response = requests.post(url, headers=headers, json=data)
         printd(f"response = {response}")
-        response.raise_for_status()  # Raises HTTPError for 4XX/5XX status
+
+        # openai populates text rather than reason
+        if str(response.status_code).startswith("4") or str(response.status_code).startswith("5"):
+            raise requests.exceptions.HTTPError(response.text, response=response)
+
+        response.raise_for_status()  # Raises HTTPError for 4XX/5XX status, should be prevented by above check
         response = response.json()  # convert to dict from string
         printd(f"response.json = {response}")
         response = ChatCompletionResponse(**response)  # convert to 'dot-dict' style which is the openai python client default
