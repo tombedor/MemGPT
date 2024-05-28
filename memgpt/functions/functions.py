@@ -31,7 +31,7 @@ def load_function_set(module):
     return function_dict
 
 
-def load_all_function_sets():
+def _load_all_functions():
     schemas_and_functions = {}
     for full_module_name in MemGPTConfig.function_modules:
         try:
@@ -52,3 +52,8 @@ def load_all_function_sets():
         except ValueError as e:
             print(f"Error loading function set, skipping '{full_module_name}': {e}")
     return schemas_and_functions
+
+
+ALL_FUNCTIONS = _load_all_functions()
+
+assert all([callable(f["python_function"]) for _k, f in ALL_FUNCTIONS.values()])

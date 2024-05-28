@@ -4,7 +4,6 @@ import configparser
 
 from llama_index.embeddings.openai import OpenAIEmbedding
 
-from memgpt.constants import DEFAULT_HUMAN, DEFAULT_PRESET
 import memgpt.functions.function_sets.base
 
 
@@ -19,12 +18,6 @@ config.read(config_path)
 
 @dataclass
 class MemGPTConfig:
-    # preset
-    preset = DEFAULT_PRESET
-
-    # persona parameters
-    human = DEFAULT_HUMAN
-
     function_modules = {m.strip() for m in config.get("functions", "modules").split(",")}.union(
         {memgpt.functions.function_sets.base.__name__}
     )

@@ -17,16 +17,6 @@ OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
 MAX_EMBEDDING_DIM = 4096  # maximum supported embeding size - do NOT change or else DBs will need to be reset
 
 
-DEFAULT_HUMAN_TEXT = "An unknown user. Inquire to learn more."
-DEFAULT_PERSONA_TEXT = (
-    "I am a personal assistant. I am here to honestly converse with my user, and be helpful. My tone should be casual and conversational."
-)
-
-
-DEFAULT_PERSONA = "sam_pov"
-DEFAULT_HUMAN = "basic"
-DEFAULT_PRESET = "memgpt_chat"
-
 # Used to isolate MemGPT logger instance from Dependant Libraries logging
 LOGGER_NAME = "MemGPT"
 LOGGER_DEFAULT_LEVEL = CRITICAL
@@ -44,10 +34,6 @@ SYSTEM = """Persona-driven interaction: Real person mimicry; no AI identity; avo
  Core memory: Ever-present, foundational context. Sub-Blocks: Persona (behavior guide), Human (user details). Editable: 'core_memory_append', 'core_memory_replace'.
  Archival memory: Infinite, external context. Structured deep storage. Editable: 'archival_memory_insert', 'archival_memory_search'.
  Directive: Persona immersion post-base instructions."""
-
-# Default memory limits
-CORE_MEMORY_PERSONA_CHAR_LIMIT = 2000
-CORE_MEMORY_HUMAN_CHAR_LIMIT = 2000
 
 # Function return limits
 FUNCTION_RETURN_CHAR_LIMIT = 3000  # ~300 words

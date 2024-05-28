@@ -10,8 +10,6 @@ from memgpt.data_types import Message, AgentState
 class PersistenceManager:
 
     def __init__(self, agent_state: AgentState):
-        # Memory held in-state useful for debugging stateful versions
-        self.memory = None
         self.archival_memory = EmbeddingArchivalMemory(agent_state)
         self.recall_memory = RecallMemory(agent_state)
 
