@@ -165,34 +165,6 @@ class Message(Record):
             tool_call_id=openai_message_dict["tool_call_id"] if "tool_call_id" in openai_message_dict else None,
         )
 
-    def readable_message(self) -> Optional[str]:
-        if self.role == "user":
-            self_text_d = json.loads(self.text)
-            if self_text_d.get("type") in ["login", "heartbeat"] or NON_USER_MSG_PREFIX in self_text_d["message"]:
-                return None
-            else:
-                return self_text_d["message"]
-
-        elif self.role == "tool":
-            return None
-        elif self.role == "assistant":
-            if self.tool_calls:
-                for tool_call in self.tool_calls:
-                    if tool_call.function["name"] == "send_message":
-                        try:
-                            return json.loads(tool_call.function["arguments"], strict=False)["message"]
-                        except json.JSONDecodeError:
-                            logging.warning("Could not decode JSON, returning raw response.")
-                            return tool_call.function["arguments"]
-            elif "system alert" in self.text:
-                pass
-            else:
-                logging.warning(f"Unexpected assistant message: role = {self.role}, text = {self.text}")
-                pass
-
-    def is_system_status_message(self) -> bool:
-        return self.readable_message() is None
-
     def to_openai_dict(self):
         """Go from Message class to ChatCompletion message object"""
 

@@ -116,34 +116,6 @@ class RecallMemoryModel(Base):
     # Add a datetime column, with default value as the current time
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    def is_system_status_message(self) -> bool:
-        return self.readable_message() is None
-
-    def readable_message(self) -> Optional[str]:
-        if self.role == "user":  # type: ignore
-            self_text_d = json.loads(self.text)  # type: ignore
-            if self_text_d.get("type") in ["login", "heartbeat"] or NON_USER_MSG_PREFIX in self_text_d["message"]:
-                return None
-            else:
-                return self_text_d["message"]
-
-        elif self.role == "tool":  # type: ignore
-            return None
-        elif self.role == "assistant":  # type: ignore
-            if self.tool_calls:  # type: ignore
-                for tool_call in self.tool_calls:
-                    if tool_call.function["name"] == "send_message":
-                        try:
-                            return json.loads(tool_call.function["arguments"], strict=False)["message"]
-                        except json.JSONDecodeError:
-                            logging.warning("Could not decode JSON, returning raw response.")
-                            return tool_call.function["arguments"]
-            elif "system alert" in self.text:
-                pass
-            else:
-                logging.warning(f"Unexpected assistant message: {self}")
-                pass
-
     def __repr__(self):
         return f"<Message(message_id='{self.id}', text='{self.text}', embedding='{self.embedding})>"
 
