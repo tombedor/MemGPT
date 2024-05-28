@@ -150,9 +150,6 @@ class SyncServer:
                 logger.debug(f"Hit max chaining steps, stopping after {counter} steps")
                 break
             # Chain handlers
-            elif step_response.active_memory_warning:
-                next_input_message = system.get_token_limit_warning()
-                continue  # always chain
             elif step_response.function_failed:
                 next_input_message = system.get_heartbeat(constants.FUNC_FAILED_HEARTBEAT_MESSAGE)
                 continue  # always chain

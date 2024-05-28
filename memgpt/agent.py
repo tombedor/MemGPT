@@ -10,27 +10,22 @@ from memgpt.metadata import MetadataStore
 from memgpt.data_types import AgentState, Message, Preset
 from memgpt.models import chat_completion_response
 from memgpt.persistence_manager import PersistenceManager
-from memgpt.system import get_login_event, package_function_response, package_summarize_message, get_initial_boot_messages
-from memgpt.memory import InContextMemory, summarize_messages
+from memgpt.system import get_login_event, package_function_response, get_initial_boot_messages
+from memgpt.memory import InContextMemory
 from memgpt.llm_api_tools import create, is_context_overflow_error
 from memgpt.utils import (
     get_tool_call_id,
     parse_json,
     printd,
-    count_tokens,
     validate_function_response,
 )
 from memgpt.constants import (
     DEFAULT_PERSONA,
-    MESSAGE_SUMMARY_WARNING_FRAC,
-    MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC,
-    MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST,
     CORE_MEMORY_HUMAN_CHAR_LIMIT,
     CORE_MEMORY_PERSONA_CHAR_LIMIT,
     WARNING_PREFIX,
     SYSTEM,
 )
-from .errors import LLMError
 from .functions.functions import load_all_function_sets
 
 
@@ -138,11 +133,6 @@ class Agent(object):
 
         self.persistence_manager = PersistenceManager(agent_state=self.agent_state)
 
-        # Controls if the convo memory pressure warning is triggered
-        # When an alert is sent in the message queue, set this to True (to avoid repeat alerts)
-        # When the summarizer is run, set this back to False (to reset)
-        self.agent_alerted_about_memory_pressure = False
-
         self._messages: List[Message] = []
 
         # Once the memory object is initialized, use it to "bake" the system message
@@ -180,21 +170,6 @@ class Agent(object):
     def messages(self) -> List[dict]:
         """Getter method that converts the internal Message list into OpenAI-style dicts"""
         return [msg.to_openai_dict() for msg in self._messages]
-
-    def _trim_messages(self, num):
-        """Trim messages from the front, not including the system message"""
-
-        new_messages = [self._messages[0]] + self._messages[num:]
-        self._messages = new_messages
-
-    def _prepend_to_messages(self, added_messages: List[Message]):
-        """Wrapper around self.messages.prepend to allow additional calls to a state/persistence manager"""
-        assert all([isinstance(msg, Message) for msg in added_messages])
-
-        self.persistence_manager.persist_messages(added_messages)
-
-        new_messages = [self._messages[0]] + added_messages + self._messages[1:]  # prepend (no system)
-        self._messages = new_messages
 
     def _append_to_messages(self, added_messages: List[Message]):
         """Wrapper around self.messages.append to allow additional calls to a state/persistence manager"""
@@ -410,7 +385,6 @@ class Agent(object):
         message_dicts: List[dict]
         heartbeat_request: bool
         function_failed: bool
-        active_memory_warning: bool
 
     def step(
         self,
@@ -465,23 +439,6 @@ class Agent(object):
             else:
                 all_new_messages = ai_response.messages
 
-            # Check the memory pressure and potentially issue a memory pressure warning
-            current_total_tokens = response.usage.total_tokens
-            active_memory_warning = False
-
-            if current_total_tokens > MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window):  # type: ignore
-                printd(
-                    f"{WARNING_PREFIX}last response total_tokens ({current_total_tokens}) > {MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window)}"  # type: ignore
-                )
-                # Only deliver the alert if we haven't already (this period)
-                if not self.agent_alerted_about_memory_pressure:
-                    active_memory_warning = True
-                    self.agent_alerted_about_memory_pressure = True  # it's up to the outer loop to handle this
-            else:
-                printd(
-                    f"last response total_tokens ({current_total_tokens}) < {MESSAGE_SUMMARY_WARNING_FRAC * int(MemGPTConfig.model_context_window)}"  # type: ignore
-                )
-
             self._append_to_messages(all_new_messages)
             all_new_messages_dicts = [msg.to_openai_dict() for msg in all_new_messages]
 
@@ -489,7 +446,6 @@ class Agent(object):
                 message_dicts=all_new_messages_dicts,
                 heartbeat_request=ai_response.heartbeat_request,
                 function_failed=ai_response.function_failed,
-                active_memory_warning=active_memory_warning,
             )
 
         except Exception as e:
@@ -497,116 +453,10 @@ class Agent(object):
 
             # If we got a context alert, try trimming the messages length, then try again
             if is_context_overflow_error(e):
-                # A separate API call to run a summarizer
-                self.summarize_messages_inplace()
-
-                # Try step again
-                return self.step(user_message)
+                raise ValueError(f"Context overflow error: {e}")
             else:
                 printd(f"step() failed with an unrecognized exception: '{str(e)}'")
                 raise e
-
-    def get_system_message_text(self):
-        return self._messages[0].text
-
-    def set_system_message_text(self, new_system_message_text: str):
-        system_message = self._messages[0]
-        system_message.text = new_system_message_text
-        system_message.id = uuid.uuid4()
-        self.persistence_manager.persist_messages([system_message])
-        self._messages[0] = system_message
-        save_agent(self)
-
-    def summarize_messages_inplace(self):
-        assert self.messages[0]["role"] == "system", f"self.messages[0] should be system (instead got {self.messages[0]})"
-
-        # Start at index 1 (past the system message),
-        # and collect messages for summarization until we reach the desired truncation token fraction (eg 50%)
-        # Do not allow truncation of the last N messages, since these are needed for in-context examples of function calling
-        token_counts = [count_tokens(str(msg)) for msg in self.messages]
-        message_buffer_token_count = sum(token_counts[1:])  # no system message
-        desired_token_count_to_summarize = int(message_buffer_token_count * MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC)
-        candidate_messages_to_summarize = self.messages[1:]
-        token_counts = token_counts[1:]
-
-        candidate_messages_to_summarize = candidate_messages_to_summarize[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
-        token_counts = token_counts[:-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST]
-
-        printd(f"MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC={MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC}")
-        printd(f"MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST={MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST}")
-        printd(f"token_counts={token_counts}")
-        printd(f"message_buffer_token_count={message_buffer_token_count}")
-        printd(f"desired_token_count_to_summarize={desired_token_count_to_summarize}")
-        printd(f"len(candidate_messages_to_summarize)={len(candidate_messages_to_summarize)}")
-
-        # If at this point there's nothing to summarize, throw an error
-        if len(candidate_messages_to_summarize) == 0:
-            raise LLMError(
-                f"Summarize error: tried to run summarize, but couldn't find enough messages to compress [len={len(self.messages)}, preserve_N={MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST}]"
-            )
-
-        # Walk down the message buffer (front-to-back) until we hit the target token count
-        tokens_so_far = 0
-        cutoff = 0
-        for i, msg in enumerate(candidate_messages_to_summarize):
-            cutoff = i
-            tokens_so_far += token_counts[i]
-            if tokens_so_far > desired_token_count_to_summarize:
-                break
-        # Account for system message
-        cutoff += 1
-
-        # Try to make an assistant message come after the cutoff
-        try:
-            printd(f"Selected cutoff {cutoff} was a 'user', shifting one...")
-            if self.messages[cutoff]["role"] == "user":
-                new_cutoff = cutoff + 1
-                if self.messages[new_cutoff]["role"] == "user":
-                    printd(f"Shifted cutoff {new_cutoff} is still a 'user', ignoring...")
-                cutoff = new_cutoff
-        except IndexError:
-            pass
-
-        # Make sure the cutoff isn't on a 'tool' or 'function'
-        while self.messages[cutoff]["role"] in ["tool", "function"] and cutoff < len(self.messages):
-            printd(f"Selected cutoff {cutoff} was a 'tool', shifting one...")
-            cutoff += 1
-
-        message_sequence_to_summarize = self.messages[1:cutoff]  # do NOT get rid of the system message
-        if len(message_sequence_to_summarize) <= 1:
-            # This prevents a potential infinite loop of summarizing the same message over and over
-            raise LLMError(
-                f"Summarize error: tried to run summarize, but couldn't find enough messages to compress [len={len(message_sequence_to_summarize)} <= 1]"
-            )
-        else:
-            printd(f"Attempting to summarize {len(message_sequence_to_summarize)} messages [1:{cutoff}] of {len(self.messages)}")
-
-        summary = summarize_messages(agent_state=self.agent_state, message_sequence_to_summarize=message_sequence_to_summarize)
-        printd(f"Got summary: {summary}")
-
-        # Metadata that's useful for the agent to see
-        summary_message_count = len(message_sequence_to_summarize)
-        summary_message = package_summarize_message(summary, summary_message_count)
-        printd(f"Packaged into message: {summary_message}")
-
-        prior_len = len(self.messages)
-        self._trim_messages(cutoff)
-        packed_summary_message = {"role": "user", "content": summary_message}
-        self._prepend_to_messages(
-            [
-                Message.dict_to_message(
-                    agent_id=self.agent_state.id,
-                    user_id=self.agent_state.user_id,
-                    openai_message_dict=packed_summary_message,
-                )
-            ]
-        )
-
-        # reset alert
-        self.agent_alerted_about_memory_pressure = False
-        save_agent(self)
-
-        printd(f"Ran summarizer, messages length {prior_len} -> {len(self.messages)}")
 
     def update_state(self) -> AgentState:
         updated_state = {

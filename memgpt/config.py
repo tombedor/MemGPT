@@ -34,7 +34,6 @@ class MemGPTConfig:
     model = config.get("model", "model")
     model_endpoint_type = config.get("model", "model_endpoint_type")
     model_endpoint = config.get("model", "model_endpoint")
-    model_context_window = int(config.get("model", "model_context_window"))
 
     embedding_endpoint = config.get("embedding", "embedding_endpoint")
     embedding_dim = int(config.get("embedding", "embedding_dim"))

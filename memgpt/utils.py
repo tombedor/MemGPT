@@ -10,7 +10,6 @@ from typing import get_type_hints, Union, _GenericAlias  # type: ignore
 from urllib.parse import urlparse
 import demjson3 as demjson
 import pytz
-import tiktoken
 
 from memgpt.constants import (
     JSON_LOADS_STRICT,
@@ -71,11 +70,6 @@ def is_valid_url(url):
         return all([result.scheme, result.netloc])
     except ValueError:
         return False
-
-
-def count_tokens(s: str, model: str = "gpt-4") -> int:
-    encoding = tiktoken.encoding_for_model(model)
-    return len(encoding.encode(s))
 
 
 def printd(*args, **kwargs):

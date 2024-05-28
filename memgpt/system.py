@@ -3,7 +3,6 @@ import json
 
 from .utils import get_local_time
 from .constants import (
-    MESSAGE_SUMMARY_WARNING_STR,
     JSON_ENSURE_ASCII,
 )
 
@@ -92,44 +91,6 @@ def package_function_response(was_success, response_string, timestamp=None):
     packaged_message = {
         "status": "OK" if was_success else "Failed",
         "message": response_string,
-        "time": formatted_time,
-    }
-
-    return json.dumps(packaged_message, ensure_ascii=JSON_ENSURE_ASCII)
-
-
-def package_system_message(system_message, message_type="system_alert", time=None):
-    formatted_time = time if time else get_local_time()
-    packaged_message = {
-        "type": message_type,
-        "message": system_message,
-        "time": formatted_time,
-    }
-
-    return json.dumps(packaged_message)
-
-
-def package_summarize_message(summary, summary_length, timestamp=None):
-    context_message = (
-        f"Note: prior messages have been hidden from view due to conversation memory constraints.\n"
-        + f"The following is a summary of the previous {summary_length} messages:\n {summary}"
-    )
-
-    formatted_time = get_local_time() if timestamp is None else timestamp
-    packaged_message = {
-        "type": "system_alert",
-        "message": context_message,
-        "time": formatted_time,
-    }
-
-    return json.dumps(packaged_message, ensure_ascii=JSON_ENSURE_ASCII)
-
-
-def get_token_limit_warning():
-    formatted_time = get_local_time()
-    packaged_message = {
-        "type": "system_alert",
-        "message": MESSAGE_SUMMARY_WARNING_STR,
         "time": formatted_time,
     }
 

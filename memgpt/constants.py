@@ -45,28 +45,6 @@ SYSTEM = """Persona-driven interaction: Real person mimicry; no AI identity; avo
  Archival memory: Infinite, external context. Structured deep storage. Editable: 'archival_memory_insert', 'archival_memory_search'.
  Directive: Persona immersion post-base instructions."""
 
-# Constants to do with summarization / conversation length window
-
-# The amount of tokens before a sytem warning about upcoming truncation is sent to MemGPT
-MESSAGE_SUMMARY_WARNING_FRAC = 0.75
-# The error message that MemGPT will receive
-# MESSAGE_SUMMARY_WARNING_STR = f"Warning: the conversation history will soon reach its maximum length and be trimmed. Make sure to save any important information from the conversation to your memory before it is removed."
-# Much longer and more specific variant of the prompt
-MESSAGE_SUMMARY_WARNING_STR = " ".join(
-    [
-        f"{NON_USER_MSG_PREFIX}The conversation history will soon reach its maximum length and be trimmed.",
-        "Do NOT tell the user about this system alert, they should not know that the history is reaching max length.",
-        "If there is any important new information or general memories about you or the user that you would like to save, you should save that information immediately by calling function core_memory_append, core_memory_replace, or archival_memory_insert.",
-        # "Remember to pass request_heartbeat = true if you would like to send a message immediately after.",
-    ]
-)
-# The fraction of tokens we truncate down to
-MESSAGE_SUMMARY_TRUNC_TOKEN_FRAC = 0.75
-
-# Even when summarizing, we want to keep a handful of recent messages
-# These serve as in-context examples of how to use functions / what user messages look like
-MESSAGE_SUMMARY_TRUNC_KEEP_N_LAST = 3
-
 # Default memory limits
 CORE_MEMORY_PERSONA_CHAR_LIMIT = 2000
 CORE_MEMORY_HUMAN_CHAR_LIMIT = 2000

@@ -2,10 +2,7 @@ from typing import Optional, List
 
 from memgpt.agent_store.storage import StorageConnector
 from memgpt.config import MemGPTConfig
-from memgpt.constants import MESSAGE_SUMMARY_WARNING_FRAC
-from memgpt.utils import get_local_time, printd, count_tokens
-from memgpt.prompts.gpt_summarize import SYSTEM as SUMMARY_PROMPT_SYSTEM
-from memgpt.llm_api_tools import create
+from memgpt.utils import get_local_time
 from memgpt.data_types import Message, Passage, AgentState
 from memgpt.embeddings import query_embedding, parse_and_chunk_text
 
@@ -55,39 +52,6 @@ class InContextMemory(object):
 
         self.human = new_human
         return len(self.human)
-
-
-def summarize_messages(
-    agent_state: AgentState,
-    message_sequence_to_summarize,
-):
-    """Summarize a message sequence using GPT"""
-    # we need the context_window
-    context_window = MemGPTConfig.model_context_window
-
-    summary_prompt = SUMMARY_PROMPT_SYSTEM
-    summary_input = str(message_sequence_to_summarize)
-    summary_input_tkns = count_tokens(summary_input)
-    if summary_input_tkns > MESSAGE_SUMMARY_WARNING_FRAC * context_window:  # type: ignore
-        trunc_ratio = (MESSAGE_SUMMARY_WARNING_FRAC * context_window / summary_input_tkns) * 0.8  # For good measure... # type: ignore
-        cutoff = int(len(message_sequence_to_summarize) * trunc_ratio)
-        summary_input = str(
-            [summarize_messages(agent_state, message_sequence_to_summarize=message_sequence_to_summarize[:cutoff])]
-            + message_sequence_to_summarize[cutoff:]
-        )
-    message_sequence = [
-        {"role": "system", "content": summary_prompt},
-        {"role": "user", "content": summary_input},
-    ]
-
-    response = create(
-        agent_state=agent_state,
-        messages=message_sequence,
-    )
-
-    printd(f"summarize_messages gpt reply: {response.choices[0]}")
-    reply = response.choices[0].message.content
-    return reply
 
 
 class RecallMemory:
