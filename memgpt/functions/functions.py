@@ -56,4 +56,4 @@ def _load_all_functions():
 
 ALL_FUNCTIONS = _load_all_functions()
 
-assert all([callable(f["python_function"]) for _k, f in ALL_FUNCTIONS.values()])
+assert all([callable(f["python_function"]) for _k, f in ALL_FUNCTIONS.items()])
