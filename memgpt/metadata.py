@@ -1,19 +1,18 @@
 """ Metadata store for user/agent/data_source information"""
 
 import uuid
-from typing import Optional, List
+from typing import Optional
 
 from memgpt.constants import ENGINE, SESSION_MAKER
 from memgpt.utils import enforce_types
-from memgpt.data_types import AgentState, User, Preset
+from memgpt.data_types import AgentState, User
 from memgpt.agent_store.storage import Base
 
-from memgpt.models.pydantic_models import PersonaModel, HumanModel
 
-from sqlalchemy import Column, String, JSON
+from sqlalchemy import Column, JSON
 from sqlalchemy import func
 from sqlalchemy.sql import func
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import TypeDecorator, CHAR
 
@@ -56,10 +55,6 @@ class AgentModel(Base):
 
     id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
     user_id = Column(CommonUUID, nullable=False)
-    name = Column(String, nullable=False)
-    persona = Column(String)
-    human = Column(String)
-    preset = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     # state
@@ -72,37 +67,8 @@ class AgentModel(Base):
         return AgentState(
             id=self.id,  # type: ignore
             user_id=self.user_id,  # type: ignore
-            name=self.name,  # type: ignore
-            human=self.human,  # type: ignore
             created_at=self.created_at,  # type: ignore
             state=self.state,  # type: ignore
-        )
-
-
-class PresetModel(Base):
-    """Defines data model for storing Preset objects"""
-
-    __tablename__ = "presets"
-    __table_args__ = {"extend_existing": True}
-
-    id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
-    user_id = Column(CommonUUID, nullable=False)
-    name = Column(String, nullable=False)
-    description = Column(String)
-    human = Column(String)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    def __repr__(self) -> str:
-        return f"<Preset(id='{self.id}', name='{self.name}')>"
-
-    def to_record(self) -> Preset:
-        return Preset(
-            id=self.id,  # type: ignore
-            user_id=self.user_id,  # type: ignore
-            name=self.name,  # type: ignore
-            description=self.description,  # type: ignore
-            human=self.human,  # type: ignore
-            created_at=self.created_at,  # type: ignore
         )
 
 
@@ -111,9 +77,6 @@ Base.metadata.create_all(
     tables=[
         UserModel.__table__,
         AgentModel.__table__,
-        PresetModel.__table__,
-        HumanModel.__table__,
-        PersonaModel.__table__,
     ],
 )
 
@@ -124,8 +87,6 @@ class MetadataStore:
         # insert into agent table
         # make sure agent.name does not already exist for user user_id
         with SESSION_MAKER() as session:
-            if session.query(AgentModel).filter(AgentModel.name == agent.name).filter(AgentModel.user_id == agent.user_id).count() > 0:
-                raise ValueError(f"Agent with name {agent.name} already exists")
             session.add(AgentModel(**vars(agent)))
             session.commit()
 
@@ -138,30 +99,6 @@ class MetadataStore:
             session.commit()
 
     @enforce_types
-    def create_preset(self, preset: Preset):
-        with SESSION_MAKER() as session:
-            if session.query(PresetModel).filter(PresetModel.id == preset.id).count() > 0:
-                raise ValueError(f"User with id {preset.id} already exists")
-            session.add(PresetModel(**vars(preset)))
-            session.commit()
-
-    @enforce_types
-    def get_preset(
-        self, preset_id: Optional[uuid.UUID] = None, preset_name: Optional[str] = None, user_id: Optional[uuid.UUID] = None
-    ) -> Optional[Preset]:
-        with SESSION_MAKER() as session:
-            if preset_id:
-                results = session.query(PresetModel).filter(PresetModel.id == preset_id).all()
-            elif preset_name and user_id:
-                results = session.query(PresetModel).filter(PresetModel.name == preset_name).filter(PresetModel.user_id == user_id).all()
-            else:
-                raise ValueError("Must provide either preset_id or (preset_name and user_id)")
-            if len(results) == 0:
-                return None
-            assert len(results) == 1, f"Expected 1 result, got {len(results)}"
-            return results[0].to_record()
-
-    @enforce_types
     def update_agent(self, agent: AgentState):
         with SESSION_MAKER() as session:
             session.query(AgentModel).filter(AgentModel.id == agent.id).update(vars(agent))  # type: ignore
@@ -172,18 +109,6 @@ class MetadataStore:
         with SESSION_MAKER() as session:
             session.query(UserModel).filter(UserModel.id == user.id).update(vars(user))  # type: ignore
             session.commit()
-
-    @enforce_types
-    def delete_agent(self, agent_id: uuid.UUID):
-        with SESSION_MAKER() as session:
-            session.query(AgentModel).filter(AgentModel.id == agent_id).delete()
-            session.commit()
-
-    @enforce_types
-    def list_agents(self, user_id: uuid.UUID) -> List[AgentState]:
-        with SESSION_MAKER() as session:
-            results = session.query(AgentModel).filter(AgentModel.user_id == user_id).all()
-            return [r.to_record() for r in results]
 
     @enforce_types
     def get_agent(
@@ -209,15 +134,3 @@ class MetadataStore:
                 return None
             assert len(results) == 1, f"Expected 1 result, got {len(results)}"
             return results[0].to_record()
-
-    @enforce_types
-    def add_human(self, human: HumanModel):
-        with SESSION_MAKER() as session:
-            session.add(human)
-            session.commit()
-
-    @enforce_types
-    def add_persona(self, persona: PersonaModel):
-        with SESSION_MAKER() as session:
-            session.add(persona)
-            session.commit()

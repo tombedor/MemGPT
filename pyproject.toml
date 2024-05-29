@@ -25,7 +25,6 @@ docstring-parser = "^0.15"
 httpx = "^0.25.2"
 numpy = "^1.26.2"
 demjson3 = "^3.0.6"
-tiktoken = "^0.7.0"
 pyyaml = "^6.0.1"
 sqlalchemy-json = "^0.7.0"
 fastapi = {version = "^0.104.1"}

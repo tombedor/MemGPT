@@ -1,3 +1,4 @@
+import logging
 import uuid
 import inspect
 import traceback
@@ -5,13 +6,14 @@ from typing import List, cast, Union
 
 from attr import dataclass
 
+from memgpt import system
+from memgpt import constants
 from memgpt.config import MemGPTConfig
 from memgpt.metadata import MetadataStore
-from memgpt.data_types import AgentState, Message, Preset
+from memgpt.data_types import AgentState, Message
 from memgpt.models import chat_completion_response
 from memgpt.persistence_manager import PersistenceManager
-from memgpt.system import get_login_event, package_function_response, get_initial_boot_messages
-from memgpt.memory import InContextMemory
+from memgpt.system import package_function_response
 from memgpt.llm_api_tools import create, is_context_overflow_error
 from memgpt.utils import (
     get_tool_call_id,
@@ -20,93 +22,36 @@ from memgpt.utils import (
     validate_function_response,
 )
 from memgpt.constants import (
-    DEFAULT_PERSONA,
-    CORE_MEMORY_HUMAN_CHAR_LIMIT,
-    CORE_MEMORY_PERSONA_CHAR_LIMIT,
     WARNING_PREFIX,
     SYSTEM,
 )
-from .functions.functions import load_all_function_sets
+from .functions.functions import ALL_FUNCTIONS
+
+MAX_CHAINING_STEPS = 20
 
 
-def initialize_memory(ai_notes: str, human_notes: str):
-    assert ai_notes
-    assert human_notes
-    memory = InContextMemory(human_char_limit=CORE_MEMORY_HUMAN_CHAR_LIMIT, persona_char_limit=CORE_MEMORY_PERSONA_CHAR_LIMIT)
-    memory.edit_persona(ai_notes)
-    memory.edit_human(human_notes)
-    return memory
-
-
-# TODO (tbedor) this should be generated dynamically
-def construct_system_with_memory(
-    memory: InContextMemory,
-):
-
-    human = memory.human
-    assert type(human) == str
-    full_system_message = "\n".join(
+def initialize_message_sequence():
+    naive_system_message = "\n".join(
         [
             SYSTEM,
             "\n",
             "<persona>",
-            DEFAULT_PERSONA,
+            "I am a personal assistant. I am here to honestly converse with my user, and be helpful. My tone should be casual and conversational."
             "</persona>",
             "<human>",
-            human,
+            "An unknown human. They have not yet shared their name.",
             "</human>",
         ]
     )
-    return full_system_message
 
-
-def initialize_message_sequence(
-    memory: InContextMemory,
-):
-
-    full_system_message = construct_system_with_memory(memory)
-    first_user_message = get_login_event()  # event letting MemGPT know the user just logged in
-
-    initial_boot_messages = get_initial_boot_messages()
-    messages = (
-        [
-            {"role": "system", "content": full_system_message},
-        ]
-        + initial_boot_messages
-        + [
-            {"role": "user", "content": first_user_message},
-        ]
-    )
+    messages = [
+        {"role": "system", "content": naive_system_message},
+    ]
 
     return messages
 
 
 class Agent(object):
-    @classmethod
-    def initialize_with_configs(
-        cls,
-        preset: Preset,
-        created_by: uuid.UUID,
-        name: str,
-    ):
-
-        assert created_by is not None, "Must provide created_by field when creating an Agent from a Preset"
-        assert name is not None, "must proide agent name"
-
-        # if agent_state is also provided, override any preset values
-        init_agent_state = AgentState(
-            name=name,
-            user_id=created_by,
-            human=preset.human,
-            state={
-                "persona": DEFAULT_PERSONA,
-                "human": preset.human,
-                "system": SYSTEM,
-                "messages": None,
-            },
-        )
-        return cls(agent_state=init_agent_state)
-
     def __init__(
         self,
         agent_state: AgentState,
@@ -121,15 +66,8 @@ class Agent(object):
         # Hold a copy of the state that was used to init the agent
         self.agent_state = init_agent_state
 
-        all_functions = load_all_function_sets()
-        self.functions = [fs["json_schema"] for fs in all_functions.values()]
-        self.functions_python = {k: v["python_function"] for k, v in all_functions.items()}
-
-        assert all([callable(f) for k, f in self.functions_python.items()]), self.functions_python
-
-        if "human" not in self.agent_state.state:
-            raise ValueError(f"'human' not found in provided AgentState")
-        self.memory = initialize_memory(ai_notes=self.agent_state.state["persona"], human_notes=self.agent_state.state["human"])
+        self.functions = [fs["json_schema"] for fs in ALL_FUNCTIONS.values()]
+        self.functions_python = {k: v["python_function"] for k, v in ALL_FUNCTIONS.items()}
 
         self.persistence_manager = PersistenceManager(agent_state=self.agent_state)
 
@@ -137,7 +75,6 @@ class Agent(object):
 
         # Once the memory object is initialized, use it to "bake" the system message
         if "messages" in self.agent_state.state and self.agent_state.state["messages"] is not None:
-            # print(f"Agent.__init__ :: loading, state={agent_state.state['messages']}")
             if not isinstance(self.agent_state.state["messages"], list):
                 raise ValueError(f"'messages' in AgentState was bad type: {type(self.agent_state.state['messages'])}")
             assert all([isinstance(msg, str) for msg in self.agent_state.state["messages"]])
@@ -150,9 +87,7 @@ class Agent(object):
             self._messages.extend([cast(Message, msg) for msg in raw_messages if msg is not None])
 
         else:
-            init_messages = initialize_message_sequence(
-                self.memory,
-            )
+            init_messages = initialize_message_sequence()
             init_messages_objs = []
             for msg in init_messages:
                 init_messages_objs.append(
@@ -382,7 +317,6 @@ class Agent(object):
 
     @dataclass
     class AgentStepResult:
-        message_dicts: List[dict]
         heartbeat_request: bool
         function_failed: bool
 
@@ -440,10 +374,8 @@ class Agent(object):
                 all_new_messages = ai_response.messages
 
             self._append_to_messages(all_new_messages)
-            all_new_messages_dicts = [msg.to_openai_dict() for msg in all_new_messages]
 
             return self.AgentStepResult(
-                message_dicts=all_new_messages_dicts,
                 heartbeat_request=ai_response.heartbeat_request,
                 function_failed=ai_response.function_failed,
             )
@@ -451,25 +383,44 @@ class Agent(object):
         except Exception as e:
             printd(f"step() failed\nuser_message = {user_message}\nerror = {e}")
 
-            # If we got a context alert, try trimming the messages length, then try again
             if is_context_overflow_error(e):
                 raise ValueError(f"Context overflow error: {e}")
             else:
                 printd(f"step() failed with an unrecognized exception: '{str(e)}'")
                 raise e
 
+    def step_chain(self, input_message: Union[str, Message]) -> List[Message]:
+        next_input_message = input_message
+        counter = 0
+        while True:
+            step_response = self.step(next_input_message)
+            counter += 1
+
+            # Chain stops
+            if counter > MAX_CHAINING_STEPS:
+                logging.debug(f"Hit max chaining steps, stopping after {counter} steps")
+                break
+            # Chain handlers
+            elif step_response.function_failed:
+                next_input_message = system.get_heartbeat(constants.FUNC_FAILED_HEARTBEAT_MESSAGE)
+                continue  # always chain
+            elif step_response.heartbeat_request:
+                next_input_message = system.get_heartbeat(constants.REQ_HEARTBEAT_MESSAGE)
+                continue  # always chain
+            # MemGPT no-op / yield
+            else:
+                break
+        save_agent(self)
+        return self._messages
+
     def update_state(self) -> AgentState:
         updated_state = {
-            "persona": self.memory.persona,
-            "human": self.memory.human,
             "functions": self.functions,
             "messages": [str(msg.id) for msg in self._messages],
         }
 
         self.agent_state = AgentState(
-            name=self.agent_state.name,
             user_id=self.agent_state.user_id,
-            human=self.agent_state.human,
             id=self.agent_state.id,
             created_at=self.agent_state.created_at,
             state=updated_state,

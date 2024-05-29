@@ -7,58 +7,12 @@ from .constants import (
 )
 
 
-def get_initial_boot_messages():
-    tool_call_id = str(uuid.uuid4())
-    messages = [
-        # first message includes both inner monologue and function call to send_message
-        {
-            "role": "assistant",
-            "content": "Bootup sequence complete. Persona activated. Testing messaging functionality.",
-            "tool_calls": [
-                {
-                    "id": tool_call_id,
-                    "type": "function",
-                    "function": {
-                        "name": "send_message",
-                        "arguments": '{\n  "message": "' + "I am ready to chat" + '"\n}',
-                    },
-                }
-            ],
-        },
-        # obligatory function return message
-        {
-            # "role": "function",
-            "role": "tool",
-            "name": "send_message",  # NOTE: technically not up to spec, this is old functions style
-            "content": package_function_response(True, None),
-            "tool_call_id": tool_call_id,
-        },
-    ]
-
-    return messages
-
-
 def get_heartbeat(reason="Automated timer", include_location=False, location_name="San Francisco, CA, USA"):
     # Package the message with time and location
     formatted_time = get_local_time()
     packaged_message = {
         "type": "heartbeat",
         "reason": reason,
-        "time": formatted_time,
-    }
-
-    if include_location:
-        packaged_message["location"] = location_name
-
-    return json.dumps(packaged_message, ensure_ascii=JSON_ENSURE_ASCII)
-
-
-def get_login_event(last_login="Never (first login)", include_location=False, location_name="San Francisco, CA, USA"):
-    # Package the message with time and location
-    formatted_time = get_local_time()
-    packaged_message = {
-        "type": "login",
-        "last_login": last_login,
         "time": formatted_time,
     }
 

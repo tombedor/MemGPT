@@ -1,6 +1,0 @@
-system_prompt: "memgpt_chat"
-functions:
-  - "conversation_search"
-  - "conversation_search_date"
-  - "archival_memory_insert"
-  - "archival_memory_search"

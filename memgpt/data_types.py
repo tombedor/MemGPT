@@ -1,18 +1,12 @@
 """ This module contains the data types used by MemGPT. Each data type must include a function to create a DB model. """
 
-import json
-import logging
 import uuid
 from datetime import datetime
 from typing import Optional, List, Dict, TypeVar
 import numpy as np
 
-from memgpt.constants import DEFAULT_HUMAN_TEXT, MAX_EMBEDDING_DIM, NON_USER_MSG_PREFIX
+from memgpt.constants import MAX_EMBEDDING_DIM
 from memgpt.utils import create_uuid_from_string
-
-from pydantic import BaseModel, Field
-
-from pydantic import BaseModel, Field
 
 
 class Record:
@@ -291,9 +285,7 @@ class User:
 class AgentState:
     def __init__(
         self,
-        name: str,
         user_id: uuid.UUID,
-        human: str,  # the filename where the human was originally sourced from
         id: Optional[uuid.UUID] = None,
         state: Optional[dict] = None,
         created_at: Optional[datetime] = None,
@@ -305,20 +297,9 @@ class AgentState:
         assert isinstance(self.id, uuid.UUID), f"UUID {self.id} must be a UUID type"
         assert isinstance(user_id, uuid.UUID), f"UUID {user_id} must be a UUID type"
 
-        self.name = name
         self.user_id = user_id
-        self.human = human
 
         self.created_at = created_at if created_at is not None else datetime.now()
 
         # state
         self.state = {} if not state else state
-
-
-class Preset(BaseModel):
-    name: str = Field(..., description="The name of the preset.")
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, description="The unique identifier of the preset.")
-    user_id: uuid.UUID = Field(..., description="The unique identifier of the user who created the preset.")
-    description: Optional[str] = Field(None, description="The description of the preset.")
-    created_at: datetime = Field(default_factory=datetime.now, description="The unix timestamp of when the preset was created.")
-    human: str = Field(default=DEFAULT_HUMAN_TEXT, description="The human of the preset.")

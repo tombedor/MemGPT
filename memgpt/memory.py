@@ -7,53 +7,6 @@ from memgpt.data_types import Message, Passage, AgentState
 from memgpt.embeddings import query_embedding, parse_and_chunk_text
 
 
-class InContextMemory(object):
-    """Held in-context inside the system message
-
-    Core Memory: Refers to the system block, which provides essential, foundational context to the AI.
-    This includes the persona information, essential user details,
-    and any other baseline data you deem necessary for the AI's basic functioning.
-    """
-
-    def __init__(self, persona=None, human=None, persona_char_limit=None, human_char_limit=None, archival_memory_exists=True):
-        self.persona = persona
-        self.human = human
-        self.persona_char_limit = persona_char_limit
-        self.human_char_limit = human_char_limit
-
-        # affects the error message the AI will see on overflow inserts
-        self.archival_memory_exists = archival_memory_exists
-
-    def __repr__(self) -> str:
-        return f"\n### CORE MEMORY ###" + f"\n=== Persona ===\n{self.persona}" + f"\n\n=== Human ===\n{self.human}"
-
-    def to_dict(self):
-        return {
-            "persona": self.persona,
-            "human": self.human,
-        }
-
-    def edit_persona(self, new_persona):
-        if self.persona_char_limit and len(new_persona) > self.persona_char_limit:
-            error_msg = f"Edit failed: Exceeds {self.persona_char_limit} character limit (requested {len(new_persona)})."
-            if self.archival_memory_exists:
-                error_msg = f"{error_msg} Consider summarizing existing core memories in 'persona' and/or moving lower priority content to archival memory to free up space in core memory, then trying again."
-            raise ValueError(error_msg)
-
-        self.persona = new_persona
-        return len(self.persona)
-
-    def edit_human(self, new_human):
-        if self.human_char_limit and len(new_human) > self.human_char_limit:
-            error_msg = f"Edit failed: Exceeds {self.human_char_limit} character limit (requested {len(new_human)})."
-            if self.archival_memory_exists:
-                error_msg = f"{error_msg} Consider summarizing existing core memories in 'human' and/or moving lower priority content to archival memory to free up space in core memory, then trying again."
-            raise ValueError(error_msg)
-
-        self.human = new_human
-        return len(self.human)
-
-
 class RecallMemory:
     """Recall memory based on base functions implemented by storage connectors"""
 
