@@ -111,15 +111,12 @@ class MetadataStore:
             session.commit()
 
     @enforce_types
-    def get_agent(
-        self, agent_id: Optional[uuid.UUID] = None, agent_name: Optional[str] = None, user_id: Optional[uuid.UUID] = None
-    ) -> Optional[AgentState]:
+    def get_agent(self, agent_id: Optional[uuid.UUID] = None, user_id: Optional[uuid.UUID] = None) -> Optional[AgentState]:
         with SESSION_MAKER() as session:
             if agent_id:
                 results = session.query(AgentModel).filter(AgentModel.id == agent_id).all()
             else:
-                assert agent_name is not None and user_id is not None, "Must provide either agent_id or agent_name"
-                results = session.query(AgentModel).filter(AgentModel.name == agent_name).filter(AgentModel.user_id == user_id).all()
+                results = session.query(AgentModel).filter(AgentModel.user_id == user_id).all()
 
             if len(results) == 0:
                 return None
