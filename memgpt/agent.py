@@ -58,7 +58,8 @@ class Agent(object):
     ):
 
         # An agent can also be created directly from AgentState
-        assert agent_state.state is not None and agent_state.state != {}, "AgentState.state cannot be empty"
+        if agent_state.state is None or agent_state.state == {}:
+            logging.warn("Initiaing agent with empty state")
 
         # Assume the agent_state passed in is formatted correctly
         init_agent_state = agent_state
