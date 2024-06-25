@@ -59,7 +59,7 @@ class Agent(object):
 
         # An agent can also be created directly from AgentState
         if agent_state.state is None or agent_state.state == {}:
-            logging.warn("Initiaing agent with empty state")
+            logging.debug("Initiaing agent with empty state")
 
         # Assume the agent_state passed in is formatted correctly
         init_agent_state = agent_state

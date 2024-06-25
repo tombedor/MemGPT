@@ -6,15 +6,14 @@ from typing import Optional
 from memgpt.constants import ENGINE, SESSION_MAKER
 from memgpt.utils import enforce_types
 from memgpt.data_types import AgentState, User
-from memgpt.agent_store.storage import Base
 
 
-from sqlalchemy import Column, JSON
-from sqlalchemy import func
+from sqlalchemy import Column, JSON, DateTime, TypeDecorator, CHAR
 from sqlalchemy.sql import func
-from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import TypeDecorator, CHAR
+from sqlalchemy.orm import declarative_base
+
+Base = declarative_base()
 
 
 # Custom UUID type
