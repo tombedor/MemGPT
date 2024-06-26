@@ -3,81 +3,18 @@
 import uuid
 from typing import Optional
 
-from memgpt.constants import ENGINE, SESSION_MAKER
+from memgpt.agent_store.storage import AgentModel, UserModel
+from memgpt.constants import SESSION_MAKER
 from memgpt.utils import enforce_types
 from memgpt.data_types import AgentState, User
 
 
-from sqlalchemy import Column, JSON, DateTime, TypeDecorator, CHAR
-from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
 
 # Custom UUID type
-class CommonUUID(TypeDecorator):
-    impl = CHAR
-    cache_ok = True
-
-    def load_dialect_impl(self, dialect):
-        return dialect.type_descriptor(UUID(as_uuid=True))
-
-    def process_bind_param(self, value, dialect):
-        return value
-
-    def process_result_value(self, value, dialect):
-        return value
-
-
-class UserModel(Base):
-    __tablename__ = "users"
-    __table_args__ = {"extend_existing": True}
-
-    id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
-
-    def __repr__(self) -> str:
-        return f"<User(id='{self.id}')>"
-
-    def to_record(self) -> User:
-        return User(
-            id=self.id,  # type: ignore
-        )
-
-
-class AgentModel(Base):
-    """Defines data model for storing Passages (consisting of text, embedding)"""
-
-    __tablename__ = "agents"
-    __table_args__ = {"extend_existing": True}
-
-    id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
-    user_id = Column(CommonUUID, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-    # state
-    state = Column(JSON)
-
-    def __repr__(self) -> str:
-        return f"<Agent(id='{self.id}', name='{self.name}')>"
-
-    def to_record(self) -> AgentState:
-        return AgentState(
-            id=self.id,  # type: ignore
-            user_id=self.user_id,  # type: ignore
-            created_at=self.created_at,  # type: ignore
-            state=self.state,  # type: ignore
-        )
-
-
-Base.metadata.create_all(
-    ENGINE,
-    tables=[
-        UserModel.__table__,
-        AgentModel.__table__,
-    ],
-)
 
 
 class MetadataStore:

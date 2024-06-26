@@ -3,7 +3,6 @@
 We originally tried to use Llama Index VectorIndex, but their limited API was extremely problematic.
 """
 
-import json
 import logging
 from typing import Optional, List, Union, Type
 import uuid
@@ -19,8 +18,8 @@ from sqlalchemy_json import MutableJson
 import uuid
 
 from pgvector.sqlalchemy import Vector
-from memgpt.data_types import Message, Passage, ToolCall, Record, Passage, Message, RecordType
-from memgpt.constants import ENGINE, MAX_EMBEDDING_DIM, NON_USER_MSG_PREFIX, SESSION_MAKER
+from memgpt.data_types import AgentState, Message, Passage, ToolCall, Record, Passage, Message, RecordType, User
+from memgpt.constants import ENGINE, MAX_EMBEDDING_DIM, SESSION_MAKER
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.sql import func
@@ -32,29 +31,65 @@ ARCHIVAL_TABLE_NAME = "memgpt_archival_memory_agent"  # agent memory
 Base = declarative_base()
 
 
-# ENUM representing table types in MemGPT
-# each table corresponds to a different table schema  (specified in data_types.py)
-class TableType:
-    ARCHIVAL_MEMORY = "archival_memory"  # recall memory table: memgpt_agent_{agent_id}
-    RECALL_MEMORY = "recall_memory"  # archival memory table: memgpt_agent_recall_{agent_id}
-
-
-# Custom UUID type
 class CommonUUID(TypeDecorator):
     impl = CHAR
     cache_ok = True
 
     def load_dialect_impl(self, dialect):
-        if dialect.name == "postgresql":
-            return dialect.type_descriptor(UUID(as_uuid=True))
-        else:
-            return dialect.type_descriptor(CHAR())
+        return dialect.type_descriptor(UUID(as_uuid=True))
 
     def process_bind_param(self, value, dialect):
         return value
 
     def process_result_value(self, value, dialect):
         return value
+
+
+class UserModel(Base):
+    __tablename__ = "users"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
+
+    def __repr__(self) -> str:
+        return f"<User(id='{self.id}')>"
+
+    def to_record(self) -> User:
+        return User(
+            id=self.id,  # type: ignore
+        )
+
+
+class AgentModel(Base):
+    """Defines data model for storing Passages (consisting of text, embedding)"""
+
+    __tablename__ = "agents"
+    __table_args__ = {"extend_existing": True}
+
+    id = Column(CommonUUID, primary_key=True, default=uuid.uuid4)
+    user_id = Column(CommonUUID, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # state
+    state = Column(JSON)
+
+    def __repr__(self) -> str:
+        return f"<Agent(id='{self.id}', name='{self.name}')>"
+
+    def to_record(self) -> AgentState:
+        return AgentState(
+            id=self.id,  # type: ignore
+            user_id=self.user_id,  # type: ignore
+            created_at=self.created_at,  # type: ignore
+            state=self.state,  # type: ignore
+        )
+
+
+# ENUM representing table types in MemGPT
+# each table corresponds to a different table schema  (specified in data_types.py)
+class TableType:
+    ARCHIVAL_MEMORY = "archival_memory"  # recall memory table: memgpt_agent_{agent_id}
+    RECALL_MEMORY = "recall_memory"  # archival memory table: memgpt_agent_recall_{agent_id}
 
 
 # Custom serialization / de-serialization for JSON columns
@@ -336,5 +371,7 @@ Base.metadata.create_all(
     tables=[
         RecallMemoryModel.__table__,
         ArchivalMemoryModel.__table__,
+        UserModel.__table__,
+        AgentModel.__table__,
     ],
 )
