@@ -56,9 +56,6 @@ class SyncServer:
         if len(message) == 0:
             raise ValueError(f"Invalid input: '{message}'")
 
-        # If the input begins with a command prefix, reject
-        elif message.startswith("/"):
-            raise ValueError(f"Invalid input: '{message}'")
         packaged_user_message = system.package_user_message(user_message=message)
 
         agent = self._load_agent(user_id=user_id, agent_id=agent_id)
