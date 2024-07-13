@@ -92,7 +92,6 @@ class Agent(object):
             assert all([isinstance(msg, Message) for msg in init_messages_objs]), (init_messages_objs, init_messages)
             self._append_to_messages(added_messages=[cast(Message, msg) for msg in init_messages_objs if msg is not None])
 
-        # Create the agent in the DB
         self.update_state()
 
     @property
