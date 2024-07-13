@@ -30,15 +30,16 @@ cache = RedisCache(redis_client = redis_client)
 
 def get_message(id: UUID) -> Message:
     @cache.cache()
-    def get_message_json(id: UUID) -> Dict:
+    def get_message_json(id: str) -> Dict:
         with SESSION_MAKER() as session:
             return pipe(
-               session.query(RecallMemoryModel).filter(RecallMemoryModel.id == id).first(), # type: ignore 
+               session.query(RecallMemoryModel).filter(RecallMemoryModel.id == UUID(id)).first(), # type: ignore 
                lambda x: x.to_record(),
                lambda x: x.to_openai_dict(),
             )
     return pipe(
         id,
+        str,
         get_message_json,
         Message.dict_to_message,
     ) # type: ignore
