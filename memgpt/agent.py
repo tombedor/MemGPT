@@ -8,11 +8,11 @@ from attr import dataclass
 
 from memgpt import system
 from memgpt import constants
-from memgpt.agent_store.message_store import get_message, persist_messages
 from memgpt.config import MemGPTConfig
 from memgpt.metadata import MetadataStore
 from memgpt.data_types import AgentState, Message
 from memgpt.models import chat_completion_response
+from memgpt.persistence_manager import PersistenceManager
 from memgpt.system import package_function_response
 from memgpt.llm_api_tools import create, is_context_overflow_error
 from memgpt.utils import (
@@ -25,7 +25,7 @@ from memgpt.constants import (
     WARNING_PREFIX,
     SYSTEM,
 )
-from .functions.functions import ALL_FUNCTIONS_JSON_SCHEMA, ALL_FUNCTIONS_PYTHON
+from .functions.functions import ALL_FUNCTIONS
 
 MAX_CHAINING_STEPS = 20
 
@@ -67,6 +67,11 @@ class Agent(object):
         # Hold a copy of the state that was used to init the agent
         self.agent_state = init_agent_state
 
+        self.functions = [fs["json_schema"] for fs in ALL_FUNCTIONS.values()]
+        self.functions_python = {k: v["python_function"] for k, v in ALL_FUNCTIONS.items()}
+
+        self.persistence_manager = PersistenceManager(agent_state=self.agent_state)
+
         self._messages: List[Message] = []
 
         # Once the memory object is initialized, use it to "bake" the system message
@@ -76,7 +81,9 @@ class Agent(object):
             assert all([isinstance(msg, str) for msg in self.agent_state.state["messages"]])
 
             # Convert to IDs, and pull from the database
-            raw_messages = [get_message(uuid.UUID(msg_id)) for msg_id in self.agent_state.state["messages"]]
+            raw_messages = [
+                self.persistence_manager.recall_memory.storage.get(id=uuid.UUID(msg_id)) for msg_id in self.agent_state.state["messages"]
+            ]
             assert all([isinstance(msg, Message) for msg in raw_messages]), (raw_messages, self.agent_state.state["messages"])
             self._messages.extend([cast(Message, msg) for msg in raw_messages if msg is not None])
 
@@ -92,6 +99,7 @@ class Agent(object):
             assert all([isinstance(msg, Message) for msg in init_messages_objs]), (init_messages_objs, init_messages)
             self._append_to_messages(added_messages=[cast(Message, msg) for msg in init_messages_objs if msg is not None])
 
+        # Create the agent in the DB
         self.update_state()
 
     @property
@@ -103,7 +111,7 @@ class Agent(object):
         """Wrapper around self.messages.append to allow additional calls to a state/persistence manager"""
         assert all([isinstance(msg, Message) for msg in added_messages])
 
-        persist_messages(added_messages)
+        self.persistence_manager.persist_messages(added_messages)
 
         new_messages = self._messages + added_messages  # append
 
@@ -119,7 +127,7 @@ class Agent(object):
             response = create(
                 agent_state=self.agent_state,
                 messages=message_sequence,
-                functions=ALL_FUNCTIONS_JSON_SCHEMA,
+                functions=self.functions,
                 function_call=function_call,
             )
             # special case for 'length'
@@ -177,7 +185,7 @@ class Agent(object):
             function_name = function_call.name
             printd(f"Request to call function {function_name} with tool_call_id: {tool_call_id}")
             try:
-                function_to_call = ALL_FUNCTIONS_PYTHON[function_name]
+                function_to_call = self.functions_python[function_name]
             except KeyError:
                 error_msg = f"No function named {function_name}"
                 function_response = package_function_response(False, error_msg)
@@ -408,6 +416,7 @@ class Agent(object):
 
     def update_state(self) -> AgentState:
         updated_state = {
+            "functions": self.functions,
             "messages": [str(msg.id) for msg in self._messages],
         }
 
