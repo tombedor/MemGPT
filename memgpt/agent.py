@@ -25,7 +25,7 @@ from memgpt.constants import (
     WARNING_PREFIX,
     SYSTEM,
 )
-from .functions.functions import ALL_FUNCTIONS
+from .functions.functions import ALL_FUNCTIONS_JSON_SCHEMA, ALL_FUNCTIONS_PYTHON
 
 MAX_CHAINING_STEPS = 20
 
@@ -66,9 +66,6 @@ class Agent(object):
 
         # Hold a copy of the state that was used to init the agent
         self.agent_state = init_agent_state
-
-        self.functions = [fs["json_schema"] for fs in ALL_FUNCTIONS.values()]
-        self.functions_python = {k: v["python_function"] for k, v in ALL_FUNCTIONS.items()}
 
         self.persistence_manager = PersistenceManager(agent_state=self.agent_state)
 
@@ -127,7 +124,7 @@ class Agent(object):
             response = create(
                 agent_state=self.agent_state,
                 messages=message_sequence,
-                functions=self.functions,
+                functions=ALL_FUNCTIONS_JSON_SCHEMA,
                 function_call=function_call,
             )
             # special case for 'length'
@@ -185,7 +182,7 @@ class Agent(object):
             function_name = function_call.name
             printd(f"Request to call function {function_name} with tool_call_id: {tool_call_id}")
             try:
-                function_to_call = self.functions_python[function_name]
+                function_to_call = ALL_FUNCTIONS_PYTHON[function_name]
             except KeyError:
                 error_msg = f"No function named {function_name}"
                 function_response = package_function_response(False, error_msg)
@@ -416,7 +413,7 @@ class Agent(object):
 
     def update_state(self) -> AgentState:
         updated_state = {
-            "functions": self.functions,
+            "functions": ALL_FUNCTIONS_JSON_SCHEMA,
             "messages": [str(msg.id) for msg in self._messages],
         }
 

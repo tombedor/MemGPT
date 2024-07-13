@@ -54,6 +54,8 @@ def _load_all_functions():
     return schemas_and_functions
 
 
-ALL_FUNCTIONS = _load_all_functions()
+all_functions = _load_all_functions()
+assert all([callable(f["python_function"]) for _k, f in all_functions.items()])
+ALL_FUNCTIONS_JSON_SCHEMA = [fs["json_schema"] for fs in all_functions.values()]
+ALL_FUNCTIONS_PYTHON = {k: v["python_function"] for k, v in all_functions.items()}
 
-assert all([callable(f["python_function"]) for _k, f in ALL_FUNCTIONS.items()])
